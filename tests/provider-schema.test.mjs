@@ -18,8 +18,8 @@ test("missing or inaccessible provider accounting disables native choices while 
     assert.ok(!JSON.stringify(models).includes("private driver error"));
   }
   const models = publicModels(environment, await runtimeExecutionReviews({ query: async () => ({ rows: [{ ready: true }] }) })).models;
-  assert.equal(models.filter(model => model.selectable).length, 8);
-  assert.equal(models.find(model => model.id === "deepseek-v4-pro").selectable, false);
+  assert.equal(models.filter(model => model.selectable).length, 9);
+  assert.equal(models.find(model => model.id === "deepseek-v4-pro").selectable, true);
 });
 
 test("release environment rejects an unintended context, commit or target before database access", () => {

@@ -11,7 +11,7 @@ const keyNames: Record<ProviderId, string> = {
 /** Reviewed release choices. Environment flags cannot activate an unsupported adapter. */
 export const RELEASED_EXECUTION_REVIEWS: Readonly<ExecutionReviews> = Object.freeze({
   "deepseek-flash": Object.freeze({ adapterSupported: true, executionEnabled: true }),
-  "deepseek-v4-pro": Object.freeze({ adapterSupported: true, executionEnabled: false }),
+  "deepseek-v4-pro": Object.freeze({ adapterSupported: true, executionEnabled: true }),
   "gpt-6-luna": Object.freeze({ adapterSupported: true, executionEnabled: true }),
   "gpt-6.1-sol": Object.freeze({ adapterSupported: true, executionEnabled: true }),
   "gpt-6-astra": Object.freeze({ adapterSupported: true, executionEnabled: true }),

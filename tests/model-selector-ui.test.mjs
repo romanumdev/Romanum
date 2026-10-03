@@ -40,7 +40,10 @@ const { ModelSelector } = await import(componentUrl);
 hooks.deregister();
 
 // No real keys, network, provider clients or fabricated prices: use actual foundation decisions.
-const catalog = publicModels({ DEEPSEEK_API_KEY: "fixture-only" });
+const catalog = publicModels({ DEEPSEEK_API_KEY: "fixture-only" }, {
+  "deepseek-flash": { adapterSupported: true, executionEnabled: true },
+  "deepseek-v4-pro": { adapterSupported: true, executionEnabled: false },
+});
 const at = "2026-10-02T12:30:00.000Z";
 const budget = { inputTokens: 1000, maxInputTokens: 2000, outputTokens: 500, maxOutputTokens: 1000 };
 const decide = (selection, extra = {}) => routeModel({ selection, availableCredits: 100, budget, at, ...extra }, catalog.models);

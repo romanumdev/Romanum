@@ -1,6 +1,6 @@
 # DeepSeek Pro transport
 
-The distinct `deepseek-v4-pro` connection uses `POST https://api.deepseek.com/chat/completions`, with thinking enabled and high effort, one sample, JSON completion, and application function tools. Flash retains its existing streaming transport. The Pro adapter factory defaults to disabled. Its server release review currently marks the adapter supported and execution disabled; the parent release integrator owns activation and publishing.
+The distinct `deepseek-v4-pro` connection uses `POST https://api.deepseek.com/chat/completions`, with thinking enabled and high effort, one sample, JSON completion, and application function tools. Flash retains its existing streaming transport. The Pro adapter factory defaults to disabled; the requested release explicitly enables its server execution review. Runtime readiness still requires the existing `DEEPSEEK_API_KEY` and migration 023 accounting tables. This release needs no new credentials, access grants or billing policy. Publication awaits parent confirmation.
 
 Official sources verified on 2026-10-03:
 
