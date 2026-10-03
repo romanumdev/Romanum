@@ -11,10 +11,11 @@ import { providerAccountingAvailable } from "../models/provider-schema.ts";
 import type { ExecutionReviews } from "../models/types.ts";
 import { compileOpenAIRequest, createOpenAIAdapter } from "../models/providers/openai.ts";
 import { compileAnthropicRequest, createAnthropicAdapter } from "../models/providers/anthropic.ts";
+import { compileDeepSeekRequest, createDeepSeekAdapter } from "../models/providers/deepseek.ts";
 import { PROVIDER_BOUND_POLICY, providerBoundReview, providerRequestBudget, quoteProviderBudget } from "../models/providers/request-bounds.ts";
 import type { ContractPolicy } from "../models/execution-accounting/types.ts";
 import type { AnthropicRequest, AnthropicContinuation, OpenAIRequest, OpenAIContinuation, ProviderMessage, OpenAIMessage,
-  ProviderTool, InputPart, ToolCall, JsonValue } from "../models/providers/types.ts";
+  DeepSeekRequest, DeepSeekContinuation, ProviderTool, InputPart, ToolCall, JsonValue } from "../models/providers/types.ts";
 import { safeJson, freezeWire } from "../models/providers/wire.ts";
 import { quotePricingPolicy } from "../credits/pricing-policy.ts";
 import { persistedAssistantModel, revalidateAssistantModel, type AssistantModelRoute } from "./model-selection.ts";
@@ -61,11 +62,11 @@ export function createAssistantProviderExecution(db: Database, context: Provider
   const environment = options.environment ?? env, reviews = options.reviews ?? RELEASED_EXECUTION_REVIEWS;
   const policy = options.boundsPolicy ?? PROVIDER_BOUND_POLICY, contract = createAccountingContract(policy);
   const now = options.now ?? (() => new Date().toISOString());
-  const native = new Map<number, OpenAIContinuation | AnthropicContinuation>();
+  const native = new Map<number, OpenAIContinuation | AnthropicContinuation | DeepSeekContinuation>();
   let firstUser: number | null = null;
   return Object.freeze({ async complete(route: AssistantModelRoute, raw: Request, callOptions: Parameters<AssistantProviderExecution["complete"]>[2]): Promise<ProviderAssistantCompletion> {
     const pinned = persistedAssistantModel(route), modelId = pinned.modelDecision!.modelId, model = getModel(modelId)!;
-    if (model.provider === "deepseek" || raw.model !== modelId || !Number.isSafeInteger(callOptions.step) || callOptions.step < 0) throw new Error("Invalid pinned native attempt.");
+    if (modelId === "deepseek-flash" || raw.model !== modelId || !Number.isSafeInteger(callOptions.step) || callOptions.step < 0) throw new Error("Invalid pinned native attempt.");
     revalidateAssistantModel(pinned, raw, environment, reviews, policy);
     callOptions.signal.throwIfAborted();
     if (!await providerAccountingAvailable(db)) throw new Error("The selected model is unavailable. Choose another model to continue.");
@@ -78,12 +79,18 @@ export function createAssistantProviderExecution(db: Database, context: Provider
       if (message.role === "system") {
         if (history.length || typeof message.content !== "string") throw new Error("Native system instructions must remain fixed across the turn.");
         system += (system ? "\n\n" : "") + message.content;
-      } else if (message.role === "user") history.push({ role: "user", content: userContent(message.content) });
+      } else if (message.role === "user") {
+        const content = userContent(message.content);
+        history.push({ role: "user", content: model.provider === "deepseek" && Array.isArray(content) && content.every(part => part.type === "text")
+          ? content.map(part => (part as Extract<InputPart, { type: "text" }>).text).join("\n") : content });
+      }
       else if (message.role === "assistant") {
         if (message.content != null && typeof message.content !== "string") throw new Error("Unsupported assistant history.");
         if (index < firstUser) {
           // Current-turn reasoning is not reconstructible from saved Chat Completions history.
-          if (message.content) history.push({ role: "assistant", content: message.content });
+          if (message.content) history.push(model.provider === "deepseek"
+            ? { role: "user", content: `Earlier assistant answer:\n${message.content}` }
+            : { role: "assistant", content: message.content });
         } else {
           const calls = toolCalls(message), continuation = native.get(index);
           if (calls.length && !continuation) throw new Error("Authentic native continuation is required.");
@@ -107,8 +114,10 @@ export function createAssistantProviderExecution(db: Database, context: Provider
       maxInputTokens: bounded.budget.maxInputTokens, capabilities: { text: true, tools: tools.length > 0, images: bounded.images } };
     const translated = model.provider === "openai"
       ? { ...common, modelId, cacheTtl: "30m", reasoningEffort: "medium" } as OpenAIRequest
+      : model.provider === "deepseek" ? { ...common, modelId, reasoningEffort: "high" } as DeepSeekRequest
       : { ...common, modelId, cacheTtl: "5m", stream: true } as AnthropicRequest;
-    const compiled = model.provider === "openai" ? compileOpenAIRequest(translated as OpenAIRequest) : compileAnthropicRequest(translated as AnthropicRequest);
+    const compiled = model.provider === "openai" ? compileOpenAIRequest(translated as OpenAIRequest)
+      : model.provider === "deepseek" ? compileDeepSeekRequest(translated as DeepSeekRequest) : compileAnthropicRequest(translated as AnthropicRequest);
     const attemptId = createHash("sha256").update(JSON.stringify(["romanum-native-attempt-v1", context.ownerId, context.feature, context.conversationId, context.runId, callOptions.step])).digest("hex");
     let state = await readProviderAttempt(db, attemptId, context.ownerId, contract);
     if (state && state.held.prepared.requestHash !== compiled.requestHash) throw new Error("A durable attempt cannot change its request.");
@@ -136,10 +145,11 @@ export function createAssistantProviderExecution(db: Database, context: Provider
     state = claim.state;
     const enabled = readModelReadiness(environment, reviews).find(item => item.modelId === modelId)?.selectable === true;
     const adapterOptions = { executionEnabled: enabled, fetch: options.fetch, timeoutMs: options.timeoutMs, now,
-      getApiKey: () => environment[model.provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"] };
+      getApiKey: () => environment[model.provider === "openai" ? "OPENAI_API_KEY" : model.provider === "deepseek" ? "DEEPSEEK_API_KEY" : "ANTHROPIC_API_KEY"] };
     const binding = { expectedRequestHash: compiled.requestHash, submittedAt: state.submission!.submittedAt };
     const result = model.provider === "openai"
       ? await createOpenAIAdapter(adapterOptions).complete(translated as OpenAIRequest, { signal: callOptions.signal, binding })
+      : model.provider === "deepseek" ? await createDeepSeekAdapter(adapterOptions).complete(translated as DeepSeekRequest, { signal: callOptions.signal, binding })
       : await createAnthropicAdapter(adapterOptions).complete(translated as AnthropicRequest, { signal: callOptions.signal, binding });
     const settled = await finishProviderAttempt(db, attemptId, context.ownerId, adapterOutcome(state, result, now()), contract);
     onPrice(settled.priceNanoUsd);

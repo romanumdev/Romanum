@@ -6,16 +6,17 @@ import { providerRequestBudget, quoteProviderBudget } from "../src/lib/models/pr
 
 const environment = { DEEPSEEK_API_KEY: "fixture-only", OPENAI_API_KEY: "fixture-only", ANTHROPIC_API_KEY: "fixture-only" };
 const at = "2026-10-02T12:00:00.000Z";
-const nativeIds = ["gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra", "claude-haiku-4-5-20251001", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"];
+const nativeIds = ["deepseek-v4-pro", "gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra", "claude-haiku-4-5-20251001", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"];
 const request = model => ({ model, messages: [{ role: "system", content: "Fixture instructions" }, { role: "user", content: "Fixture question" }], max_tokens: 16_000 });
 const reviews = ids => ({ ...RELEASED_EXECUTION_REVIEWS, ...Object.fromEntries(ids.map(id => [id, { adapterSupported: true, executionEnabled: true }])) });
+const disabledReviews = { ...RELEASED_EXECUTION_REVIEWS, ...Object.fromEntries(nativeIds.map(id => [id, { adapterSupported: true, executionEnabled: false }])) };
 const resolve = (selection, enabled = reviews(nativeIds)) => resolveAssistantModel(selection, request("deepseek-flash"), Number.MAX_SAFE_INTEGER, environment, at, enabled);
 
-test("strict server routing accepts each reviewed native adapter with its own quote and retains default disablement", () => {
+test("strict server routing accepts each reviewed native adapter with its own quote and obeys disabled reviews", () => {
   for (const modelId of nativeIds) {
     const selection = { mode: "explicit", modelId };
-    assert.throws(() => assertSelectionReady(selection, environment), /unavailable/);
-    assert.throws(() => resolveAssistantModel(selection, request(modelId), Number.MAX_SAFE_INTEGER, environment, at), /unavailable/);
+    assert.throws(() => assertSelectionReady(selection, environment, disabledReviews), /unavailable/);
+    assert.throws(() => resolveAssistantModel(selection, request(modelId), Number.MAX_SAFE_INTEGER, environment, at, disabledReviews), /unavailable/);
     const enabled = reviews([modelId]);
     assertSelectionReady(selection, environment, enabled);
     const route = resolve(selection, enabled);
@@ -23,7 +24,7 @@ test("strict server routing accepts each reviewed native adapter with its own qu
     assert.deepEqual(route.modelDecision.quote, quoteProviderBudget(modelId, providerRequestBudget(request(modelId), modelId).budget, at));
     assert.deepEqual(persistedAssistantModel(route), route);
     revalidateAssistantModel(route, request(modelId), environment, enabled);
-    assert.throws(() => revalidateAssistantModel(route, request(modelId), environment), /unavailable/);
+    assert.throws(() => revalidateAssistantModel(route, request(modelId), environment, disabledReviews), /unavailable/);
     assert.throws(() => revalidateAssistantModel(route, request(modelId), {}, enabled), /unavailable/);
     assert.ok(Object.isFrozen(route) && Object.isFrozen(route.modelDecision) && Object.isFrozen(route.modelDecision.quote));
   }

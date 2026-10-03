@@ -1,11 +1,11 @@
-import type { AnthropicResult, OpenAIResult } from "../providers/types.ts";
+import type { AnthropicResult, OpenAIResult, DeepSeekResult } from "../providers/types.ts";
 import { canonicalTime, freezeWire } from "../providers/wire.ts";
 import type { AttemptOutcome, AttemptState, UsageEvidence } from "./types.ts";
 
 /** Pure handoff for trusted adapter results. No hold, dispatch, settlement, release or retry happens here.
  * The caller must load the authorized, owner-scoped current state and persist the contract's revision CAS.
  * Native continuation, visible output and provider diagnostics never enter accounting evidence. */
-export function adapterOutcome(state: AttemptState, result: AnthropicResult | OpenAIResult, observedAt: string): AttemptOutcome {
+export function adapterOutcome(state: AttemptState, result: AnthropicResult | OpenAIResult | DeepSeekResult, observedAt: string): AttemptOutcome {
   if (!canonicalTime(observedAt)) throw new Error("Invalid evidence timestamp.");
   const { prepared, holdId, bindingFingerprint } = state.held;
   const base = { attemptId: prepared.attemptId, holdId, bindingFingerprint, observedAt };

@@ -17,6 +17,7 @@ import { readChat } from "../src/lib/chats/store.ts";
 import { CHAT_PROMPT } from "../src/lib/chats/prompt.ts";
 import * as openai from "./fixtures/openai-provider.mjs";
 import * as anthropic from "./fixtures/anthropic-provider.mjs";
+import * as deepseek from "./fixtures/deepseek-provider.mjs";
 
 // Actual API/engine/native HTTP parsing/wallet integration. Only trusted authentication,
 // server review configuration and transport are synthetic. No environment mutations.
@@ -55,7 +56,7 @@ const { executeChatRun } = await import("../src/lib/chats/run-worker.ts");
 hooks.deregister();
 
 const at = "2026-10-03T07:00:00.000Z";
-const modelIds = ["gpt-6-luna", "claude-haiku-4-5-20251001"];
+const modelIds = ["gpt-6-luna", "claude-haiku-4-5-20251001", deepseek.modelId];
 const reviews = Object.fromEntries(modelIds.map(modelId => [modelId, { adapterSupported: true, executionEnabled: true }]));
 async function fixture(t, { modelId = "gpt-6-luna", enabled = true, credits = 10_000, mismatch = false } = {}) {
   const engine = await PGlite.create();
@@ -65,11 +66,11 @@ async function fixture(t, { modelId = "gpt-6-luna", enabled = true, credits = 10
   await migrateHistory(db);
   const ownerId = `fixture:${randomUUID()}`, context = { conversationId: randomUUID(), runId: null };
   await grantCredits(db, { ownerId, amount: credits, operationId: `fixture-grant:${ownerId}` });
-  const f = { db, ownerId, context, modelId, at, environment: { OPENAI_API_KEY: "synthetic-only", ANTHROPIC_API_KEY: "synthetic-only" },
+  const f = { db, ownerId, context, modelId, at, environment: { OPENAI_API_KEY: "synthetic-only", ANTHROPIC_API_KEY: "synthetic-only", DEEPSEEK_API_KEY: "synthetic-only" },
     reviews: enabled ? reviews : Object.fromEntries(modelIds.map(id => [id, { adapterSupported: true, executionEnabled: false }])), requests: [], storage: 0, deepseekClients: 0 };
   const fetcher = async (url, init) => {
     const body = JSON.parse(init.body);
-    assert.equal(url, modelId.startsWith("gpt-") ? "https://api.openai.com/v1/responses" : "https://api.anthropic.com/v1/messages");
+    assert.equal(url, modelId.startsWith("gpt-") ? "https://api.openai.com/v1/responses" : modelId === deepseek.modelId ? "https://api.deepseek.com/chat/completions" : "https://api.anthropic.com/v1/messages");
     assert.equal(body.model, modelId);
     const attempts = (await db.query("SELECT state FROM provider_attempts")).rows;
     assert.ok(attempts.some(row => row.state.phase === "submitted" && row.state.submission), "durable dispatch commits before transport");
@@ -77,6 +78,11 @@ async function fixture(t, { modelId = "gpt-6-luna", enabled = true, credits = 10
     f.requests.push(body);
     if (modelId.startsWith("gpt-")) return openai.response(openai.envelope({ model: mismatch ? "gpt-6-astra" : modelId,
       output: mismatch ? [openai.call()] : [openai.reasoning(), openai.text("Verified HTTP fixture answer.")] }));
+    if (modelId === deepseek.modelId) {
+      const payload = deepseek.envelope({ model: mismatch ? "deepseek-flash" : modelId });
+      payload.choices[0].message.content = "Verified HTTP fixture answer.";
+      return deepseek.response(payload);
+    }
     const events = anthropic.textEvents("Verified HTTP fixture answer.");
     events[0].message.model = modelId;
     return anthropic.responseFrom(anthropic.sse(events));
@@ -118,7 +124,7 @@ test("actual Ask HTTP boundary completes native selection, quote, hold, provider
     assert.equal(stream.at(-1).type, "usage");
     assert.equal(stream.at(-1).credits, Number(charge.price_nano_usd) / 10_000_000);
     assert.equal((await getBalance(f.db, { ownerId: f.ownerId })).reserved, 0);
-    assert.doesNotMatch(JSON.stringify(stream) + JSON.stringify(attempt), /synthetic-only|synthetic_opaque_reasoning|API_KEY/);
+    assert.doesNotMatch(JSON.stringify(stream) + JSON.stringify(attempt), /synthetic-only|synthetic_opaque_reasoning|synthetic_private_reasoning|API_KEY/);
   });
 });
 
@@ -164,7 +170,8 @@ test("actual Ask trusted wallet balance rejects native reservation despite forge
 });
 
 test("actual queued worker executes a persisted native pin and saves replayable events with one wallet charge", async t => {
-  const f = await fixture(t);
+  for (const modelId of ["gpt-6-luna", deepseek.modelId]) await t.test(modelId, async t => {
+  const f = await fixture(t, { modelId });
   const accountId = randomUUID();
   await f.db.query("INSERT INTO accounts(id,owner_id,roblox_user_id,username,display_name) VALUES($1,$2,123,'fixture','Fixture')", [accountId, f.ownerId]);
   const selection = { mode: "explicit", modelId: f.modelId };
@@ -194,4 +201,5 @@ test("actual queued worker executes a persisted native pin and saves replayable 
   assert.equal(await executeChatRun(f.db, submitted.runId, { billing, analyticsTools }), false);
   assert.equal(f.requests.length, 1);
   assert.equal((await charges(f)).length, 1);
+  });
 });

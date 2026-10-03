@@ -123,7 +123,8 @@ test("old holds settle at 1.65x alongside 2.5x holds and flat tools without migr
   assert.equal((await getBalance(db, { ownerId })).reserved, 2);
   await settleUsage(db, { ownerId, id: uncertain.id, call });
   assert.equal((await getBalance(db, { ownerId })).reserved, 0);
-  const readiness = readModelReadiness({ DEEPSEEK_API_KEY: "fixture", OPENAI_API_KEY: "fixture", ANTHROPIC_API_KEY: "fixture" });
+  const readiness = readModelReadiness({ DEEPSEEK_API_KEY: "fixture", OPENAI_API_KEY: "fixture", ANTHROPIC_API_KEY: "fixture" },
+    { "deepseek-flash": { adapterSupported: true, executionEnabled: true } });
   assert.deepEqual(readiness.filter(model => model.executionEnabled).map(model => model.modelId), ["deepseek-flash"]);
   assert.equal(normalizeUsage("deepseek-flash", { prompt_tokens: 1, completion_tokens: 1 }, { at: AT }).modelId, "deepseek-flash");
 });

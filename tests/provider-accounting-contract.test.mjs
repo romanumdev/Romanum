@@ -391,6 +391,6 @@ test("a cache-aware estimate never reduces the independently verified reservatio
 
 test("module and synthetic review policy do not make frontier models executable", () => {
   submittedFixture();
-  const readiness = readModelReadiness({ OPENAI_API_KEY: "synthetic", ANTHROPIC_API_KEY: "synthetic" });
+  const readiness = readModelReadiness({ OPENAI_API_KEY: "synthetic", ANTHROPIC_API_KEY: "synthetic" }, {});
   assert.ok(readiness.filter(model => !model.modelId.startsWith("deepseek")).every(model => !model.executionEnabled && !model.selectable));
 });

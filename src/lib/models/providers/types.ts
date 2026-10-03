@@ -95,3 +95,26 @@ export type OpenAIResult =
   | Extract<AnthropicResult, { status: "failed" }>;
 export type OpenAIAdapterOptions = AnthropicAdapterOptions;
 export type OpenAICallOptions = { signal?: AbortSignal; binding?: AttemptBinding };
+
+export type DeepSeekModelId = Extract<ModelId, "deepseek-v4-pro">;
+export type DeepSeekOutputMessage = {
+  role: "assistant"; content: string | null; reasoning_content: string;
+  tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[];
+};
+/** Invocation-local provider output only; never accept this from browser history. */
+export type DeepSeekContinuation = {
+  provider: "deepseek"; modelId: DeepSeekModelId; prefixHash: string; content: DeepSeekOutputMessage;
+};
+export type DeepSeekMessage = Extract<ProviderMessage, { role: "user" | "tool" }>
+  | { role: "assistant"; content: string; toolCalls?: readonly ToolCall[]; continuation?: DeepSeekContinuation };
+export type DeepSeekRequest = {
+  modelId: DeepSeekModelId; system?: string; messages: readonly DeepSeekMessage[]; tools?: readonly ProviderTool[];
+  maxTokens: number; maxInputTokens: number; reasoningEffort?: "low" | "high" | "max";
+  capabilities?: CapabilityRequirements;
+};
+export type DeepSeekResult =
+  | { status: "completed"; modelId: DeepSeekModelId; messageId: string; text: string; toolCalls: ToolCall[];
+      stopReason: "end_turn" | "tool_use" | "max_tokens" | "content_filter"; truncated: boolean;
+      usage: NormalizedUsage; usageComplete: true; continuation: DeepSeekContinuation | null;
+      evidence: AdapterEvidence; providerCostNanoUsd: number }
+  | Extract<AnthropicResult, { status: "failed" }>;

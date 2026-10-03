@@ -91,12 +91,11 @@ export function resolveAssistantModel(selection: ModelSelection, request: Reques
   const bounds = requestBounds(request);
   const readiness = readModelReadiness(environment, reviews);
   // Routing retains its existing ordering; each native provider supplies its own reviewed ceiling.
-  const nativeQuotes = readiness.some(model => model.selectable && getModel(model.modelId)?.provider !== "deepseek");
+  const nativeQuotes = readiness.some(model => model.selectable && model.modelId !== "deepseek-flash");
   const decision = routeModel({ selection, availableCredits, budget: bounds.budget,
     capabilities: { text: true, tools: !!request.tools?.length, images: bounds.images }, at, pricingPolicyVersion: pricingPolicy }, readiness,
   nativeQuotes ? modelId => {
     if (modelId === "deepseek-flash") return quoteModel(modelId, bounds.budget, { at, pricingPolicyVersion: pricingPolicy });
-    if (getModel(modelId)?.provider === "deepseek") blocked("model_unavailable");
     const native = providerRequestBudget(request, modelId, boundPolicy);
     return quoteProviderBudget(modelId, native.budget, at, boundPolicy, pricingPolicy);
   } : undefined);
@@ -106,7 +105,7 @@ export function resolveAssistantModel(selection: ModelSelection, request: Reques
     try { ceiling = quoteAssistantCall({ ...request, model: decision.modelId }, pricingPolicy); }
     catch { return blocked("context_limit"); }
     if (ceiling !== decision.quote.reservationPriceNanoUsd || reservationCredits(ceiling) !== decision.quote.reservationCredits) blocked("model_unavailable");
-  } else if (getModel(decision.modelId)?.provider === "deepseek") blocked("model_unavailable");
+  }
   return freeze({ modelSelection: selection, modelDecision: decision, modelResolvedAt: at });
 }
 

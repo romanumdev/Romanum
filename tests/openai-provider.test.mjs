@@ -22,7 +22,7 @@ test("OpenAI factory/import/key presence cannot activate paid execution or readi
   const adapter = createOpenAIAdapter({ getApiKey: () => { keyReads++; return "fixture"; }, fetch: async () => { calls++; throw Error(); } });
   failed(await adapter.complete(request()), "execution_disabled", "not_submitted");
   assert.equal(keyReads, 0); assert.equal(calls, 0);
-  for (const model of readModelReadiness({ OPENAI_API_KEY: "fixture" }).filter(model => models.includes(model.modelId))) {
+  for (const model of readModelReadiness({ OPENAI_API_KEY: "fixture" }, {}).filter(model => models.includes(model.modelId))) {
     assert.equal(model.selectable, false); assert.equal(model.executionEnabled, false); assert.equal(model.entitlementVerified, false);
   }
   for (const key of [undefined, "", "bad\nheader"]) {

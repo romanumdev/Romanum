@@ -21,7 +21,7 @@ test("catalog IDs, standard prices and provenance are explicit and immutable", (
   assert.throws(() => { getModel("gpt-6.1-sol").rates.input = 0; }, TypeError);
 });
 
-test("the reviewed native adapters are enabled while the unsupported adapter stays disabled", () => {
+test("released native adapters stay enabled while Pro awaits its release execution gate", () => {
   const missing = readModelReadiness({});
   assert.ok(missing.every((model) => !model.configured && !model.selectable && model.reason === "missing_key"));
   const configured = readModelReadiness({ ...environment(), OPENAI_EXECUTION_ENABLED: "true", ANTHROPIC_EXECUTION_ENABLED: "true", MODEL_EXECUTION_ENABLED: "true" });
@@ -30,10 +30,10 @@ test("the reviewed native adapters are enabled while the unsupported adapter sta
   assert.equal(flash.entitlementVerified, false);
   for (const model of configured.filter((model) => model.modelId !== "deepseek-flash")) {
     assert.equal(model.configured, true);
-    assert.equal(model.adapterSupported, model.modelId !== "deepseek-v4-pro");
+    assert.equal(model.adapterSupported, true);
     assert.equal(model.executionEnabled, model.modelId !== "deepseek-v4-pro");
     assert.equal(model.selectable, model.modelId !== "deepseek-v4-pro");
-    assert.equal(model.reason, model.modelId === "deepseek-v4-pro" ? "adapter_not_supported" : "ready");
+    assert.equal(model.reason, model.modelId === "deepseek-v4-pro" ? "execution_disabled" : "ready");
     assert.equal(model.entitlementVerified, false);
   }
   const supported = readModelReadiness(environment(), { "gpt-6.1-sol": { adapterSupported: true, executionEnabled: false } });

@@ -35,7 +35,7 @@ const models: ModelDefinition[] = [
   { ...common, id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", provider: "deepseek", capabilities: { ...visionTools, images: false },
     rates: { input: 1.32, cacheRead: 0.044, output: 3.96 }, offPeakRates: { input: 0.66, cacheRead: 0.022, output: 1.98 },
     cacheTtls: ["automatic"], sources: { model: DEEPSEEK_PRICING, pricing: DEEPSEEK_PRICING, caching: DEEPSEEK_CACHING },
-    notes: ["Text/tools only; no vision. Reviewed adapter and reservation policy required."] },
+    notes: ["V4-Pro-0813 remains available (official docs verified 2026-10-03). Text/tools only; no vision. Separate Chat Completions adapter; release execution gate required."] },
   openai("gpt-6-luna", "GPT-6 Luna", { input: 0.1, cacheRead: 0.01, cacheWrite: 0.125, output: 0.5 },
     ["Responses supports tools; Chat Completions function calling requires reasoning_effort=none."]),
   openai("gpt-6.1-sol", "GPT-6.1 Sol", { input: 2, cacheRead: 0.1, cacheWrite: 2.5, output: 10 }),

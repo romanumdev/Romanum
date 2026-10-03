@@ -69,7 +69,7 @@ test("disabled and missing/removed keys never submit; importing the adapter does
     const noKey = harness(null, { getApiKey: () => key });
     failed(await noKey.adapter.complete(request()), "missing_key", "not_submitted"); assert.equal(noKey.calls.length, 0);
   }
-  assert.ok(readModelReadiness({ ANTHROPIC_API_KEY: fixtureKey }).filter(model => model.modelId.startsWith("claude-")).every(model => !model.selectable && !model.executionEnabled));
+  assert.ok(readModelReadiness({ ANTHROPIC_API_KEY: fixtureKey }, {}).filter(model => model.modelId.startsWith("claude-")).every(model => !model.selectable && !model.executionEnabled));
 });
 
 test("translation preserves system, images, tool identity and immediate grouped tool results", () => {

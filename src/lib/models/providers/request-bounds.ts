@@ -7,6 +7,7 @@ import type { ContractPolicy } from "../execution-accounting/types.ts";
 import { validatePolicy } from "../execution-accounting/validate.ts";
 import { OPENAI_ADAPTER_VERSION, OPENAI_REQUEST_FORMAT } from "./openai.ts";
 import { ANTHROPIC_ADAPTER_VERSION, ANTHROPIC_REQUEST_FORMAT } from "./anthropic.ts";
+import { DEEPSEEK_ADAPTER_VERSION, DEEPSEEK_REQUEST_FORMAT } from "./deepseek.ts";
 import { NATIVE_BOUND_STRATEGY, NATIVE_BOUND_VERSION, NATIVE_INPUT_CAPACITY } from "./native-capacity.ts";
 import { safeJson } from "./wire.ts";
 import { CURRENT_PRICING_POLICY, type PricingPolicyVersion } from "../../credits/pricing-policy.ts";
@@ -17,9 +18,9 @@ export type ProviderAssistantRequest = Pick<OpenAI.Chat.ChatCompletionCreatePara
 export const PROVIDER_BOUND_POLICY: ContractPolicy = validatePolicy({ reviewedBounds: MODEL_CATALOG
   .filter(model => NATIVE_INPUT_CAPACITY[model.id]).map(model => ({
     strategyId: NATIVE_BOUND_STRATEGY, strategyVersion: NATIVE_BOUND_VERSION, provider: model.provider, modelId: model.id,
-    adapterVersion: model.provider === "openai" ? OPENAI_ADAPTER_VERSION : ANTHROPIC_ADAPTER_VERSION,
-    requestFormatVersion: model.provider === "openai" ? OPENAI_REQUEST_FORMAT : ANTHROPIC_REQUEST_FORMAT,
-    capabilities: ["text", "tools", "images"], cacheTtls: [...model.cacheTtls],
+    adapterVersion: model.provider === "openai" ? OPENAI_ADAPTER_VERSION : model.provider === "deepseek" ? DEEPSEEK_ADAPTER_VERSION : ANTHROPIC_ADAPTER_VERSION,
+    requestFormatVersion: model.provider === "openai" ? OPENAI_REQUEST_FORMAT : model.provider === "deepseek" ? DEEPSEEK_REQUEST_FORMAT : ANTHROPIC_REQUEST_FORMAT,
+    capabilities: ["text", "tools", ...(model.capabilities.images ? ["images"] : [])], cacheTtls: [...model.cacheTtls],
     maxInputTokens: NATIVE_INPUT_CAPACITY[model.id], maxOutputTokens: model.maxOutputTokens,
   })) });
 
