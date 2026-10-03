@@ -16,7 +16,7 @@ export const PUBLIC_TOOLS = {
     schema: z.object({ universeIds: z.array(positiveId).min(1).max(10), days: z.number().int().min(1).max(366).default(30) }).strict(),
   },
   research_game_idea: {
-    description: "Before recommending a game concept, search its proposed title and one or two mechanic/fantasy phrases for existing Roblox games. Returns candidate competitors, query coverage, sponsored status and observation timestamps. Search is incomplete and cannot prove novelty or that existing games are worse. No AI/model cost.",
+    description: "Research possible competitors when the user requests research or a recommendation depends on novelty, competition or market opportunity. Search a proposed title and one or two mechanic/fantasy phrases for existing Roblox games. Pure brainstorming and brief corrections do not require this lookup. Returns candidate competitors, query coverage, sponsored status and observation timestamps. Search is incomplete and cannot prove novelty, demand, causes of success or that existing games are worse. Reuse relevant results; avoid repeating failed searches without a material new question. No AI/model cost.",
     schema: IDEA_RESEARCH_INPUT,
   },
   get_game_history: {
