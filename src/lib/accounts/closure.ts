@@ -75,6 +75,9 @@ async function assertNoSharedAssets(sql: Sql, ownerId: string) {
 // (chat_messages, agent_actions, linked game records) are reached only through
 // their owner's parent row, and the parent rows are deleted in dependency order.
 async function deleteOwnerData(sql: Sql, ownerId: string, accountId: string) {
+  // Saved analytics work is private; watch state and alerts cascade from watches.
+  await sql.query("DELETE FROM analytics_watchlists WHERE owner_id=$1", [ownerId]);
+  await sql.query("DELETE FROM analytics_experiments WHERE owner_id=$1", [ownerId]);
   // The catalogue's own audit trail and lineage first, then its listings and
   // rights, before the private assets and projects they point at.
   await sql.query("DELETE FROM ui_library_events WHERE owner_id=$1", [ownerId]);

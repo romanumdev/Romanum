@@ -56,6 +56,10 @@ export const EXPORT_SECTIONS = [
   "ad_report_observations",
   "ad_report_observation_reports",
   "ad_report_observation_creatives",
+  "analytics_watchlists",
+  "analytics_watchlist_state",
+  "analytics_notifications",
+  "analytics_experiments",
 ] as const;
 
 export type ExportSection = (typeof EXPORT_SECTIONS)[number];
@@ -105,6 +109,24 @@ function requireAccount(account: ExportAccount | null | undefined): ExportAccoun
 type SectionSpec = { columns: string; from: string; scope: string; key: string };
 
 const SPECS: Record<ExportSection, SectionSpec> = {
+  analytics_watchlists: {
+    columns: "w.id, w.name, w.universe_id::text AS universe_id, w.peer_ids, w.enabled, w.direction, w.threshold_percent, w.minimum_players, w.window_minutes, w.revision, w.created_at, w.updated_at",
+    from: "analytics_watchlists w", scope: "w.owner_id=$1", key: "w.id::text",
+  },
+  analytics_watchlist_state: {
+    columns: "s.watchlist_id, s.revision, s.latched, s.evaluated_slot, s.coverage, s.detail",
+    from: "analytics_watchlist_state s JOIN analytics_watchlists w ON w.id=s.watchlist_id AND w.owner_id=s.owner_id",
+    scope: "s.owner_id=$1 AND w.owner_id=$1", key: "s.watchlist_id::text",
+  },
+  analytics_notifications: {
+    columns: "n.id, n.watchlist_id, n.observed_at, n.title, n.evidence, n.acknowledged_at, n.created_at",
+    from: "analytics_notifications n JOIN analytics_watchlists w ON w.id=n.watchlist_id AND w.owner_id=n.owner_id",
+    scope: "n.owner_id=$1 AND w.owner_id=$1", key: "n.id::text",
+  },
+  analytics_experiments: {
+    columns: "e.id, e.project_id, e.title, e.brief, e.evidence, e.intended_metric, e.universe_id::text AS universe_id, e.status, e.release_date, e.revision, e.created_at, e.updated_at",
+    from: "analytics_experiments e", scope: "e.owner_id=$1", key: "e.id::text",
+  },
   ad_reports: {
     columns: "r.id, r.project_id, r.owner_id, r.content_fingerprint, r.bundle, r.created_at",
     from: "ad_reports r", scope: "r.owner_id=$1", key: "r.id::text",

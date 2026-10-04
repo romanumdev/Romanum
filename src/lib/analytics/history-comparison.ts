@@ -15,7 +15,7 @@ export const HISTORY_COMPARISON_POLICY = Object.freeze({ minimumPairedSlots: 3, 
 const PERIOD = INTERVAL_SECONDS * 1000;
 const iso = (time: number) => new Date(time).toISOString();
 const span = (times: number[]) => times.length ? { from: iso(Math.min(...times)), to: iso(Math.max(...times)) } : null;
-type Observation = { universeId: number; observedAt: string; playing: number };
+type Observation = { universeId: number; observedAt: string; playing: number; chartRanks: Record<string, number> };
 type Sample = Observation & { slot: string };
 
 /** Keep the actual run slot from the existing service's reads, without changing its SQL or response.
@@ -77,7 +77,7 @@ async function readGame(database: Database | null, universeId: number, days: num
       gapCounts.ambiguousObservation++;
       continue;
     }
-    samples.set(key, { slot: key, universeId, observedAt: point.observedAt, playing: point.playing });
+    samples.set(key, { slot: key, universeId, observedAt: point.observedAt, playing: point.playing, chartRanks: point.chartRanks });
   }
   const values = [...samples.values()];
   return {
@@ -97,6 +97,20 @@ async function readGame(database: Database | null, universeId: number, days: num
         validFractionOfRequestedSlots: samples.size / expectedSlots,
       },
     },
+  };
+}
+
+
+/** Endpoint changes only, on explicitly matching recorded slots. */
+export function observedGrowth(samples: Sample[]) {
+  const first = samples[0], last = samples.at(-1);
+  if (!first || !last) return null;
+  const base = first.playing;
+  return {
+    first, last, absoluteChange: last.playing - base,
+    percentChange: base === 0 ? null : (last.playing - base) / base * 100,
+    indexStatus: base === 0 ? "zero_baseline" : "indexed",
+    series: samples.map(point => ({ ...point, index: base === 0 ? null : point.playing / base * 100 })),
   };
 }
 
@@ -129,6 +143,7 @@ function comparePair(left: Awaited<ReturnType<typeof readGame>>, right: Awaited<
       rightUnpairedSamples: right.samples.size - paired.length,
       pairedSlotSpan: first && last ? { from: first, to: last } : null,
     },
+    growth: reasons.length ? null : { left: observedGrowth(evidence.map(point => point.left)), right: observedGrowth(evidence.map(point => point.right)) },
     observedPlayerCounts: reasons.length ? null : {
       leftMean, rightMean, meanDifference: difference,
       minimumDifference: Math.min(...evidence.map((point) => point.left.playing - point.right.playing)),
@@ -159,7 +174,16 @@ export function createHistoryComparisonService(getDatabase: () => Promise<Databa
       }
       const slots = [...matrix].sort(([left], [right]) => left.localeCompare(right)).map(([slot, observations]) => ({ slot, observations }));
       const commonSlots = slots.filter((slot) => slot.observations.length === games.length).length;
+      const common = slots.filter(slot => slot.observations.length === games.length);
+      const sharedReasons = pairs.some(pair => pair.status !== "compared") ? ["pair_evidence_floor_not_met"] : [];
+      if (common.length < HISTORY_COMPARISON_POLICY.minimumPairedSlots) sharedReasons.push("too_few_all_game_slots");
       return {
+        sameWindow: {
+          status: sharedReasons.length ? "insufficient_data" : "compared", reasons: sharedReasons,
+          pairedSlots: common.length, span: span(common.map(point => Date.parse(point.slot))),
+          games: sharedReasons.length ? [] : games.map(game => ({ universeId: game.report.universeId,
+            ...observedGrowth(common.map(point => ({ slot: point.slot, ...point.observations.find(observation => observation.universeId === game.report.universeId)! }))) })),
+        },
         available: database !== null,
         status: compared === pairs.length ? "compared" : compared ? "partial" : "insufficient_data",
         metric: { id: "playing", unit: "concurrent_players", differenceDirection: "left_minus_right" },
@@ -171,7 +195,9 @@ export function createHistoryComparisonService(getDatabase: () => Promise<Databa
         games: games.map((game) => game.report),
         pairs,
         slots,
+        annotations: { updates: "not_recorded", discovery: "chartRanks contain only actual recorded non-sponsored chart placements; absence is unknown, not a chart exit." },
         limitations: [
+          "Growth describes first-to-last observed CCU on matching slots, not sustained growth. Index 100 uses the first shared observation; a zero baseline has null index and percentage, while absolute change remains available. Updates and reasons for changes are not recorded.",
           "All games use the same requested UTC period and fixed cutoff. Reads are not an atomic database snapshot; an in-flight collector may finish during them.",
           "Slots are the actual five-minute collection runs; observedAt is retrieval time, not Roblox's measurement time. Retrieval times within a run can differ.",
           "Only matching valid observed slots enter pair statistics. Missing, failed, unrecorded and ambiguous observations are never zero-filled or interpolated.",

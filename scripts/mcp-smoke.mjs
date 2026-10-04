@@ -13,7 +13,9 @@ const call = async (name, args = {}) => {
 try {
   await client.connect(new StreamableHTTPClientTransport(endpoint));
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 10);
+  assert.equal(tools.length, 12);
+  assert.ok(tools.some(tool => tool.name === "compare_game_history"));
+  assert.ok(tools.some(tool => tool.name === "suggest_game_peers"));
   const { resources } = await client.listResources();
   assert.equal(resources.length, 9);
   await client.readResource({ uri: "romanum://skills/romanum-game-design" });
@@ -43,6 +45,17 @@ try {
   assert.equal(resolved.universeId, first.universeId);
   const history = await call("get_game_history", { universeId: first.universeId, days: 1 });
   assert.ok(Array.isArray(history.points));
+  const comparisonIds = [...new Set(chart.games.map(game => game.universeId))].slice(0, 2);
+  assert.equal(comparisonIds.length, 2, "comparison smoke needs two distinct public chart IDs");
+  const comparison = await call("compare_game_history", { universeIds: comparisonIds, days: 1 });
+  const peers = await call("suggest_game_peers", { universeId: first.universeId, days: 1 });
+  assert.ok(Array.isArray(peers.peers));
+  assert.equal(comparison.games.length, 2);
+  assert.equal(comparison.cutoff, comparison.to);
+  assert.equal(Date.parse(comparison.to) - Date.parse(comparison.from), 86400000);
+  assert.ok(Array.isArray(comparison.sameWindow.games));
+  assert.ok(comparison.games.every(game => game.coverage.validSamples >= 0));
+  assert.ok(comparison.pairs.every(pair => pair.status === "compared" || pair.observedPlayerCounts === null));
   const analysis = await call("get_market_analysis");
   assert.ok(analysis.sampleSize > 0, "market uses real chart observations");
   const cached = await call("get_roblox_charts", { chart: "top-playing-now", limit: 3 });
@@ -51,7 +64,8 @@ try {
     endpoint: endpoint.href, protocol: "legacy", tools: tools.length, resources: resources.length,
     searchMatches: search.games.length, chartGames: chart.games.length, statsGames: stats.games.length,
     icons: stats.games.filter((game) => game.iconUrl).length, earningsEstimates: estimates.games.length,
-    historicalObservations: history.sampleCount,
+    historicalObservations: history.sampleCount, comparisonStatus: comparison.status,
+    comparisonSharedSlots: comparison.coverage.allGamesPairedSlots, peerSuggestions: peers.peers.length,
     sampleSize: analysis.sampleSize, unavailableCharts: analysis.unavailableCharts,
     fetchedAt: chart.fetchedAt, source: chart.source,
   }, null, 2));

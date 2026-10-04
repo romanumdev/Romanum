@@ -4,6 +4,7 @@ import { getRobloxChart, getGameStats, type ChartGame, type GameStats } from "..
 import { MARKET_CHARTS } from "../public-data.ts";
 import { isRobloxImageUrl } from "../roblox-icons.ts";
 import { INTERVAL_SECONDS } from "./constants.ts";
+import { evaluateWatchlists } from "../watchlists/store.ts";
 
 export const COHORT_LIMIT = 300;
 const validId = (value: number) => Number.isSafeInteger(value) && value > 0;
@@ -47,8 +48,22 @@ export async function collectHistory(database: Database, options: { loaders?: ty
       });
     }
 
-    const { rows: targets } = await database.query<{ universe_id: string }>(`SELECT universe_id FROM history_chart_entries
-      WHERE run_id=$1 AND NOT sponsored GROUP BY universe_id ORDER BY min(rank),universe_id LIMIT $2`, [runId, COHORT_LIMIT]);
+    // Reserve at most 50 of the existing 300 slots for explicitly saved public
+    // games/peers. Oldest attempted saved games rotate fairly under capacity;
+    // failed reads do not monopolize the reserve. Unused reserve stays with charts.
+    const { rows: targets } = await database.query<{ universe_id: string }>(`WITH chart AS (
+      SELECT universe_id,row_number() OVER(ORDER BY min(rank),universe_id) AS position FROM history_chart_entries
+      WHERE run_id=$1 AND NOT sponsored GROUP BY universe_id
+    ), saved AS (
+      SELECT DISTINCT unnest(array_prepend(universe_id,peer_ids)) AS universe_id FROM analytics_watchlists
+    ), reserved AS (
+      SELECT s.universe_id FROM saved s WHERE NOT EXISTS(SELECT 1 FROM chart c WHERE c.universe_id=s.universe_id AND c.position<=250)
+      ORDER BY (SELECT max(r.slot) FROM history_targets t JOIN history_runs r ON r.id=t.run_id WHERE t.universe_id=s.universe_id) ASC NULLS FIRST,s.universe_id LIMIT 50
+    ), candidates AS (
+      SELECT universe_id,0 AS priority,position AS position FROM chart WHERE position<=250
+      UNION ALL SELECT universe_id,1 AS priority,0 AS position FROM reserved
+      UNION ALL SELECT universe_id,2 AS priority,position FROM chart WHERE position>250 AND universe_id NOT IN(SELECT universe_id FROM reserved)
+    ) SELECT universe_id FROM candidates ORDER BY priority,position,universe_id LIMIT $2`, [runId, COHORT_LIMIT]);
     const ids = targets.map((target) => Number(target.universe_id));
     await database.query("INSERT INTO history_targets(run_id,universe_id,status) SELECT $1,unnest($2::bigint[]),'pending'", [runId, ids]);
     await database.query("UPDATE history_runs SET targeted=$2 WHERE id=$1", [runId, ids.length]);
@@ -81,7 +96,12 @@ export async function collectHistory(database: Database, options: { loaders?: ty
     const observed = counts[0].observed;
     const status = counts[0].chart_failures || observed !== ids.length ? (observed ? "partial" : "failed") : "complete";
     await database.query("UPDATE history_runs SET status=$2,observed=$3,finished_at=$4 WHERE id=$1", [runId, status, observed, new Date(now()).toISOString()]);
-    return { skipped: false, runId, slot, status, targeted: ids.length, observed, chartFailures: counts[0].chart_failures };
+    // Alert failure must not undo successfully persisted public collection.
+    let alertStatus: "complete" | "unavailable" = "complete";
+    let notifications = 0;
+    try { notifications = await evaluateWatchlists(database,slot,now()); }
+    catch { alertStatus = "unavailable"; }
+    return { skipped: false, runId, slot, status, targeted: ids.length, observed, chartFailures: counts[0].chart_failures, alertStatus, notifications };
   } catch (error) {
     await database.query("UPDATE history_runs SET status='failed',finished_at=$2,observed=(SELECT count(*) FROM history_observations WHERE run_id=$1) WHERE id=$1", [runId, new Date(now()).toISOString()]).catch(() => {});
     throw error;

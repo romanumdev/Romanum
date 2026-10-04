@@ -2,8 +2,9 @@
 
 import { useId, useRef, useState } from "react";
 import { formatImplementationBrief, type ImplementationBrief } from "@/lib/implementation/brief";
+import { TrackExperiment } from "@/components/experiments/track-experiment";
 
-export function ImplementationBriefCard({ brief }: { brief: ImplementationBrief }) {
+export function ImplementationBriefCard({ brief, trackable = true }: { brief: ImplementationBrief; trackable?: boolean }) {
   const id = useId();
   const field = useRef<HTMLTextAreaElement>(null);
   const [status, setStatus] = useState("");
@@ -30,6 +31,7 @@ export function ImplementationBriefCard({ brief }: { brief: ImplementationBrief 
       <p className="mt-1 text-xs text-fg-muted">Review and paste into your AI coding tool. Copying is free.</p>
       <textarea id={id} ref={field} readOnly value={prompt} rows={6} spellCheck={false} className="mt-2 block w-full resize-y rounded-md border border-line bg-surface p-2 text-xs leading-5 text-fg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg/70" />
       <p role="status" aria-live="polite" className="mt-1 text-xs text-fg-muted">{status}</p>
+      {trackable && <TrackExperiment brief={brief} />}
     </div>
   );
 }

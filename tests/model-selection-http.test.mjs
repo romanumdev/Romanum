@@ -46,7 +46,9 @@ const chats = await import("../src/app/api/chats/route.ts");
 hooks.deregister();
 
 function fixture(t, extra = {}) {
-  const old = process.env.DEEPSEEK_API_KEY;
+  const keys = ["DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"];
+  const old = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
   process.env.DEEPSEEK_API_KEY = "fixture-only";
   const f = { storage: 0, balance: 100, requests: [], holds: [], after: [], ...extra };
   f.client = { chat: { completions: { create: async request => {
@@ -58,7 +60,7 @@ function fixture(t, extra = {}) {
   } } } };
   f.billing = { credits: 0, reserve: async ceiling => { f.holds.push(ceiling); return "fixture-hold"; }, settle: async () => {}, finish: async () => {}, tool: async (_, execute) => execute() };
   globalThis.__modelHttp = f;
-  t.after(() => { delete globalThis.__modelHttp; if (old === undefined) delete process.env.DEEPSEEK_API_KEY; else process.env.DEEPSEEK_API_KEY = old; });
+  t.after(() => { delete globalThis.__modelHttp; for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
   return f;
 }
 function askRequest(selection, extra = {}) {
@@ -90,7 +92,7 @@ test("actual Ask/Chats routes reject injected/unknown choices before storage or 
 
 test("unavailable frontier models and removed keys fail clearly without silently replacing explicit choices", async t => {
   const f = fixture(t);
-  for (const modelId of ["gpt-6.1-sol", "claude-opus-5-5", "deepseek-v4-pro"]) {
+  for (const modelId of ["gpt-6.1-sol", "claude-opus-5-5"]) {
     for (const response of [await ask.POST(askRequest({ mode: "explicit", modelId })), await chats.POST(chatRequest({ mode: "explicit", modelId }))]) {
       assert.equal(response.status, 409); assert.match((await response.json()).error, /unavailable/);
     }
@@ -134,6 +136,12 @@ test("browser credits cannot bypass trusted balance; errors never expose storage
   assert.equal((await ask.POST(askRequest({ mode: "auto" }, { availableCredits: 999999, quote: { reservationCredits: 0 } }))).status, 402);
   assert.equal((await chats.POST(chatRequest({ mode: "auto" }))).status, 402);
   assert.equal(f.requests.length, 0);
+  f.balance = 100;
+  for (const response of [await ask.POST(askRequest({ mode: "explicit", modelId: "deepseek-v4-pro" })), await chats.POST(chatRequest({ mode: "explicit", modelId: "deepseek-v4-pro" }))]) {
+    assert.equal(response.status, 402, "enabled Pro still requires its full trusted reservation");
+    assert.match((await response.json()).error, /Not enough credits/);
+  }
+  assert.equal(f.requests.length, 0, "insufficient balance cannot submit a Pro call");
   f.fail = true; f.balance = 100;
   for (const response of [await ask.POST(askRequest({ mode: "auto" })), await chats.POST(chatRequest({ mode: "auto" }))]) {
     assert.equal(response.status, 503); assert.doesNotMatch(await response.text(), /fixture-secret|diagnostic/);

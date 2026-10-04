@@ -268,6 +268,7 @@ test("live insight enrichment is read-only and falls back to the saved insight i
 function viewHooks() {
   return registerHooks({
     resolve(specifier, context, nextResolve) {
+      if (specifier === "next/link") return nextResolve("next/link.js", context);
       let target;
       if (specifier.startsWith("@/")) target = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
       else if (specifier.startsWith(".") && context.parentURL?.startsWith(new URL("../src/", import.meta.url).href)) target = new URL(specifier, context.parentURL);
@@ -299,8 +300,11 @@ test("the insight card keeps trend detail under Evidence and sources with dated 
         radar: [], dataAt: iso(now), generatedAt: iso(now),
       }, trendEvidence: evidence }, today: "2026-10-03", connected: false, fitRow: false,
     }));
-    const markup = render(evidence), details = markup.slice(markup.indexOf("<details"));
-    assert.ok(!markup.slice(0, markup.indexOf("<details")).includes("Recorded chart activity"));
+    const markup = render(evidence);
+    const detailsStart = markup.search(/<details\b[^>]*>\s*<summary\b[^>]*>Evidence and sources<\/summary>/);
+    assert.ok(detailsStart >= 0);
+    const details = markup.slice(detailsStart);
+    assert.ok(!markup.slice(0, detailsStart).includes("Recorded chart activity"));
     assert.match(details, /Recorded chart activity/);
     assert.match(details, /288\/288 matching complete slots/);
     assert.match(details, /median 120, largest-game share 83\.3%/);

@@ -25,12 +25,13 @@ export default function PrivacyPage() {
         <h2>What we collect and why</h2>
         <ul className="list-disc space-y-3 pl-5">
           <li><strong className="text-fg">Roblox profile:</strong> signing in gives us your Roblox user ID, username, display name and profile picture. We use these to identify your account, sign you in and apply credits. We do not receive your Roblox password.</li>
-          <li><strong className="text-fg">Content you provide:</strong> saved chats, uploaded images, project briefs, asset plans, imported ad reports, creative associations, saved observations and related activity. We store this to provide the features you use and let you return to your work.</li>
+          <li><strong className="text-fg">Content you provide:</strong> saved chats, uploaded images, project briefs, asset plans, imported ad reports, creative associations, saved observations, game watches, alert rules and development experiments, including their evidence and release dates. We store this to provide the features you use and let you return to your work.</li>
           <li><strong className="text-fg">Usage records:</strong> credit grants, reservations, spending, model and tool names, token counts and timestamps. These support metering, error investigation and prevention of repeated sign-up bonuses or weekly refills.</li>
           <li><strong className="text-fg">Technical information:</strong> cookies, request details, IP addresses, browser information and errors processed by our hosting and security providers to deliver and protect the service.</li>
           <li><strong className="text-fg">Support:</strong> if you email us, we receive your address and message so we can respond.</li>
         </ul>
         <p>We also collect public Roblox experience information, including names, creators, icons, player counts and historical observations, to provide analytics. This public dataset is separate from private connected-game analytics.</p>
+        <p>Saved watches and experiments are private to your account or signed guest identity. Watches use public observations to check your rules and save alerts in Romanum; they do not send messages elsewhere. These records are included in account exports and removed when you delete their watch, experiment or account. Saving a watch can add its public game to the bounded public collection cohort; the public history does not disclose who saved it.</p>
       </section>
       <section id="ai">
         <h2>AI requests</h2>
@@ -77,7 +78,7 @@ export default function PrivacyPage() {
       <section id="retention">
         <h2>Storage and deletion</h2>
         <p>Saved account content stays in the application database until you delete it or your account. There is no automatic expiry for inactive accounts or guest content at present. Access to private records is checked against the account or guest identifier; game API keys are encrypted separately.</p>
-        <p>Deleting your account removes its profile, saved chats and images, projects and plans, linked game keys, private metrics and consent history from the active database. All its sign-in sessions are revoked. A request already sent to an AI provider cannot be recalled by deleting the account.</p>
+        <p>Deleting your account removes its profile, saved chats and images, projects and plans, watches and alerts, development experiments, linked game keys, private metrics and consent history from the active database. All its sign-in sessions are revoked. A request already sent to an AI provider cannot be recalled by deleting the account.</p>
           <p>We retain credit, model and tool-usage records for accounting, resolving outstanding usage and preventing abuse. They include an internal owner identifier and, for sign-up grants and weekly refill records, your Roblox user ID. We also retain a closure marker containing internal account identifiers and the deletion date so stale requests cannot recreate your content. These records do not contain your chat text or images.</p>
         <p>There is currently no automatic expiry for these retained records. You can ask us to review their continued retention. Provider logs, provider-held AI requests and backup copies follow separate retention processes; account deletion does not immediately erase them. We do not promise a fixed deletion deadline for those copies.</p>
         <p>Public Roblox history is retained independently. If unfinished creation work or another user&apos;s licensed asset copy prevents automatic deletion, the request leaves your account intact and directs you to support for review. Returning after deletion creates a new account; old credits and the sign-up bonus are not restored.</p>

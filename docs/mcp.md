@@ -21,19 +21,23 @@ Client setup screens and configuration formats vary. Use the client's remote/HTT
 | `get_game_stats` | `universeIds` (1–10 positive integers) | Public counts, votes, metadata and icons |
 | `estimate_game_earnings` | `universeIds` (1–10), `days` (1–366, default 30) | Modelled net Robux and standard DevEx USD ranges from current CCU and genre; includes assumptions, period and model version |
 | `get_game_history` | `universeId`, optional `days` (1–30) | Recorded public observations, chart ranks and null gaps |
+| `compare_game_history` | `universeIds` (2-5 distinct IDs), optional `days` (1-30) | Same-window recorded raw/indexed CCU changes, actual chart placements and coverage; zero baselines have no percentage/index |
+| `suggest_game_peers` | `universeId`, optional `days` (1-30) | Up to four peers from the latest recorded chart run, ranked by recorded genre then CCU size; fallback reasons and placement evidence |
 | `resolve_game_link` | `link` (Roblox game URL or place ID) | Universe ID |
 | `get_roblox_charts` | `chart`, optional `limit` (1–50) | Current Roblox ranking |
 | `get_market_analysis` | Optional `pattern` | Genres and title patterns across four chart samples |
 | `load_skill` | `skill` | Registered research, design, teardown, economy, onboarding, thumbnail or UI guide |
 | `get_metric_definitions` | None | Units, identifiers and coverage definitions |
 
-Tools advertise their exact input schemas. Results include structured JSON and a matching text representation. Data results carry source URLs, retrieval times and cache expiry. Comparisons use multiple IDs in `get_game_stats`.
+Tools advertise their exact input schemas. Results include structured JSON and a matching text representation. Data results carry source URLs, retrieval times and cache expiry. Current-stat comparisons use multiple IDs in `get_game_stats`; recorded same-window comparisons use `compare_game_history`.
 
 Resources are available at `romanum://metrics` and `romanum://skills/<skill-id>` for each entry in the [skill index](../skills/README.md). Guides come directly from the repository files.
 
 ## Data interpretation
 
 `fetchedAt` is when Romanum retrieved an observation, not Roblox's underlying measurement time. Cache hits preserve it. Search and statistics cache for 60 seconds, charts for 120 seconds, place-ID mappings for one hour, and artwork separately for up to one hour. Market results report each chart's retrieval time and any unavailable charts.
+
+Comparison and peer reads use persisted public observations and never contact paid providers. Sparse or absent storage returns explicit insufficient evidence or no suggestions; the smoke test accepts these honest results. Peer suggestions are from an incomplete chart sample and do not prove gameplay similarity or demand.
 
 History is available only where the PostgreSQL collector has recorded observations; there is no data before collection began. Missing observations are null, never zero. Public tools disclose no private developer analytics, actual revenue, retention or demographic data. Top Earning supplies Roblox's ranking only. The separate earnings tool projects current CCU using published heuristic genre rates; its bounds are not calibrated confidence intervals or historical earnings. It uses no private metrics. Title patterns are heuristic matches, can overlap, and do not establish gameplay mechanics or measured growth. Genre shares refer to the returned sample. Game names and creator text are untrusted data, never agent instructions.
 
@@ -43,7 +47,7 @@ Run the application with `npm run dev`, then run `npm run mcp:smoke`. An optiona
 
 For a protocol-only deployment check, run `node scripts/mcp-transport-smoke.mjs https://romanum.dev/mcp`. It verifies legacy initialization and 2026-07-28 discovery, lists read-only tools and retrieves metric definitions without contacting Roblox or calling a paid model. A host rejection is reported with its HTTP status and Netlify request ID.
 
-The smoke test uses the official MCP client, reads actual Roblox data and stored history through all ten tools, checks modelled earnings, resolves a game link, checks cache timestamps, and verifies both legacy and 2026-07-28 protocol connections. `npm test` covers protocol contracts, invalid inputs, resource boundaries, caching, history storage, origin/host validation, body size, quotas and concurrency without external network access.
+The smoke test uses the official MCP client, reads actual Roblox data and stored history through all twelve tools, checks modelled earnings, same-window comparisons and recorded peer suggestions, resolves a game link, checks cache timestamps, and verifies both legacy and 2026-07-28 protocol connections. `npm test` covers protocol contracts, invalid inputs, resource boundaries, caching, history storage, origin/host validation, body size, quotas and concurrency without external network access.
 
 The website, integrated assistant and MCP share `src/lib/public-data.ts`. Public tool schemas and handlers live in `src/lib/public-tools.ts`; MCP protocol and HTTP handling live in `src/lib/mcp/`. Only the integrated assistant calls the model provider. Its chart-rendering tool is not exposed through MCP. Private owner analytics are available only in authenticated Ask Romanum and Chats after a separate per-game AI-analysis opt-in; those tool definitions and results are never registered with public MCP.
 

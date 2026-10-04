@@ -72,6 +72,8 @@ const LABELS: Record<string, string> = {
   estimate_game_earnings: "Estimate earnings",
   research_game_idea: "Check similar games",
   get_game_history: "Read game history",
+  compare_game_history: "Compare recorded game activity",
+  suggest_game_peers: "Find comparable games",
   get_market_analysis: "Analyze market patterns",
   load_skill: "Read skill guide",
   get_metric_definitions: "Read metric definitions",

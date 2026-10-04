@@ -45,7 +45,9 @@ for (const mode of ["legacy", { pin: "2026-07-28" }]) {
     t.after(() => endpoint.close());
     const client = await connect(t, endpoint, mode);
     const { tools } = await client.listTools();
-    assert.equal(tools.length, 10);
+    assert.equal(tools.length, 12);
+    assert.ok(tools.some(tool => tool.name === "compare_game_history"));
+    assert.ok(tools.some(tool => tool.name === "suggest_game_peers"));
     assert.ok(tools.every((tool) => tool.annotations.readOnlyHint && !tool.annotations.destructiveHint));
     assert.ok(!tools.some((tool) => tool.name === "create_chart"));
     const result = await client.callTool({ name: "search_games", arguments: { query: "Test" } });

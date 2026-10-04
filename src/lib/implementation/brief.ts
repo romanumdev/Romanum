@@ -3,6 +3,20 @@ import type { Recommendation } from "../insights/store.ts";
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
+export const briefEvidenceSchema = z.object({
+  provenance: z.literal("prepared_brief_snapshot"),
+  insightDay: z.iso.date().optional(),
+  sources: z.array(z.object({
+    kind: z.enum(["public_chart", "public_search", "prepared_brief"]),
+    label: text(800),
+    url: z.url({ protocol: /^https?$/ }).max(1000).optional(),
+    universeId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+    playing: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+    observedAt: z.iso.datetime().optional(),
+  }).strict()).max(12),
+  caveats: z.array(z.enum(["client_supplied_snapshot", "historical_sample", "gameplay_unverified", "search_candidates", "research_incomplete", "legacy_unverified"])).max(6),
+}).strict();
+
 /** Written implementation instructions only; this contract does not execute code. */
 export const implementationBriefSchema = z.object({
   title: text(120),
@@ -10,6 +24,7 @@ export const implementationBriefSchema = z.object({
   goal: text(1200),
   requirements: z.array(text(800)).min(1).max(12),
   acceptanceCriteria: z.array(text(800)).min(1).max(12),
+  supportingEvidence: briefEvidenceSchema.optional(),
 }).strict();
 
 export type ImplementationBrief = z.infer<typeof implementationBriefSchema>;
@@ -44,6 +59,14 @@ export function recommendationImplementationBrief(idea: Recommendation, insightD
   return implementationBriefSchema.parse({
     title: idea.title,
     context,
+    supportingEvidence: {
+      provenance: "prepared_brief_snapshot", insightDay,
+      sources: [
+        ...(idea.evidence ?? []).map(item => ({ kind: "public_chart" as const, label: `${item.name} (${item.chart})`, url: `https://www.roblox.com/games/${item.rootPlaceId}`, universeId: item.universeId, playing: item.playing, observedAt: item.fetchedAt })),
+        ...(research?.games.slice(0, 5) ?? []).map(game => ({ kind: "public_search" as const, label: game.name, url: `https://www.roblox.com/games/${game.rootPlaceId}`, universeId: game.universeId, observedAt: game.fetchedAt })),
+      ],
+      caveats: ["client_supplied_snapshot", "historical_sample", "gameplay_unverified", ...(research ? ["search_candidates" as const] : []), ...(research?.status !== "complete" ? ["research_incomplete" as const] : []), ...(!idea.proposal ? ["legacy_unverified" as const] : [])],
+    },
     goal: idea.proposal ? `Build a small playable prototype where players ${idea.proposal.coreAction}, using ${idea.proposal.variation}.` : `Turn the unverified suggestion for ${idea.title} into a small playable prototype after confirming the intended core loop.`,
     requirements: [
       "Inspect the existing Roblox project and describe a minimal implementation plan before changing it.",

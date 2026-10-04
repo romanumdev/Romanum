@@ -19,10 +19,15 @@ const baseTime = Date.parse("2026-01-01T00:00:15Z");
 const game = (id = 1, extra = {}) => ({ universeId: id, rootPlaceId: id * 100, name: `Fixture ${id}`, rank: 1, playing: 12, likes: 4, dislikes: 1, genre: "Simulation", sponsored: false, ...extra });
 const loaders = (extra = {}) => ({ getRobloxChart: async () => [game()], getGameStats: async () => [game(1, { visits: 100, favorites: 5 })], ...extra });
 
+async function restoreMigration022Fixture(db) {
+  // The disposable engine alone is rewound; application databases never are.
+  await db.exec("DROP TABLE analytics_experiments, analytics_notifications, analytics_watchlist_state, analytics_watchlists, mcp_tool_usage_daily, provider_final_claims, provider_attempts; DROP INDEX history_targets_game_run; DELETE FROM romanum_migrations WHERE version>=23");
+}
+
 test("migration is repeatable and a duplicate slot does not fetch or overwrite data", async (t) => {
   const db = await database(t);
   await migrateHistory(db);
-  assert.deepEqual((await db.query("SELECT version FROM romanum_migrations ORDER BY version")).rows.map((row) => row.version), Array.from({ length: 23 }, (_, i) => i + 1));
+  assert.deepEqual((await db.query("SELECT version FROM romanum_migrations ORDER BY version")).rows.map((row) => row.version), Array.from({ length: 26 }, (_, i) => i + 1));
   const first = await collectHistory(db, { loaders: loaders(), now: () => baseTime });
   assert.equal(first.observed, 1);
   const duplicate = await collectHistory(db, { loaders: new Proxy({}, { get() { assert.fail("duplicate slot fetched Roblox"); } }), now: () => baseTime + 1000 });
@@ -39,7 +44,7 @@ test("migration is repeatable and a duplicate slot does not fetch or overwrite d
 test("migration refuses a changed applied checksum before applying new SQL", async (t) => {
   const db = await database(t);
   // Reconstruct the preceding schema only inside this disposable engine.
-  await db.exec("DROP TABLE provider_final_claims, provider_attempts; DELETE FROM romanum_migrations WHERE version=23");
+  await restoreMigration022Fixture(db);
   await db.query("UPDATE romanum_migrations SET checksum='changed' WHERE version=1");
   await assert.rejects(migrateHistory(db), /Applied migration has changed or is missing/);
   assert.equal((await db.query("SELECT count(*)::int AS count FROM romanum_migrations")).rows[0].count, 22);
@@ -48,7 +53,7 @@ test("migration refuses a changed applied checksum before applying new SQL", asy
 
 test("migration 023 upgrades 022 repeatably without changing existing wallet balances, reservations, carry or receipts", async (t) => {
   const db = await database(t);
-  await db.exec("DROP TABLE provider_final_claims, provider_attempts; DELETE FROM romanum_migrations WHERE version=23");
+  await restoreMigration022Fixture(db);
   const ownerId = "migration-upgrade-fixture";
   await grantCredits(db, { ownerId, amount: 71, operationId: "migration-upgrade-grant" });
   await reserveCredits(db, { ownerId, amount: 9, operationId: "migration-upgrade-hold" });
@@ -64,7 +69,7 @@ test("migration 023 upgrades 022 repeatably without changing existing wallet bal
   await migrateHistory(db);
   await migrateHistory(db);
   assert.deepEqual(await snapshot(), before);
-  assert.deepEqual((await db.query("SELECT version FROM romanum_migrations ORDER BY version")).rows.map(row => row.version), Array.from({ length: 23 }, (_, i) => i + 1));
+  assert.deepEqual((await db.query("SELECT version FROM romanum_migrations ORDER BY version")).rows.map(row => row.version), Array.from({ length: 26 }, (_, i) => i + 1));
   assert.equal((await db.query("SELECT count(*)::int AS count FROM provider_attempts")).rows[0].count, 0);
   assert.equal((await db.query("SELECT count(*)::int AS count FROM provider_final_claims")).rows[0].count, 0);
 });

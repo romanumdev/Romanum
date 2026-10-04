@@ -21,6 +21,7 @@ const hooks = registerHooks({
   },
 });
 const { GET, runtime, dynamic } = await import("../src/app/api/history/compare/route.ts");
+const { GET: GETPeers } = await import("../src/app/api/history/peers/route.ts");
 hooks.deregister();
 
 const period = 300_000;
@@ -127,4 +128,21 @@ test("HTTP hides storage failures, SQL, connection strings and internal exceptio
   const queryFailed = await GET(request("?universeIds=1,2"));
   assert.equal(queryFailed.status, 503);
   assert.deepEqual(await queryFailed.json(), { error: "Couldn't compare recorded history. Try again." });
+});
+
+
+test("public peer HTTP enforces bounds before storage and sanitizes unavailable storage", async t => {
+  t.after(() => { delete globalThis.__comparisonStorageReads; delete globalThis.__comparisonFailure; });
+  globalThis.__comparisonStorageReads = 0;
+  for (const query of ["", "?universeId=0", "?universeId=1&days=31", "?universeId=1&ownerId=private", "?universeId=1&universeId=2", "?universeId=9007199254740992"]) {
+    const response = await GETPeers(new Request(`http://localhost/api/history/peers${query}`));
+    assert.equal(response.status, 400); assertNoStore(response);
+  }
+  assert.equal(globalThis.__comparisonStorageReads, 0);
+  const offline = await GETPeers(new Request("http://localhost/api/history/peers?universeId=1"));
+  assert.equal(offline.status, 200); assertNoStore(offline);
+  assert.equal((await offline.json()).available, false);
+  globalThis.__comparisonFailure = "postgresql://secret:password@internal/db SELECT private";
+  const failed = await GETPeers(new Request("http://localhost/api/history/peers?universeId=1"));
+  assert.equal(failed.status, 503); assert.doesNotMatch(await failed.text(), /secret|password|postgresql|SELECT/);
 });

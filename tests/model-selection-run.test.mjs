@@ -10,12 +10,16 @@ import { cancelChatRun, claimChatRun, readChatRun, submitChatQuestion } from "..
 import { executeChatRun } from "../src/lib/chats/run-worker.ts";
 import { readChat } from "../src/lib/chats/store.ts";
 
-const env = { DEEPSEEK_API_KEY: "fixture-only", OPENAI_API_KEY: "fixture-only", ANTHROPIC_API_KEY: "fixture-only" };
+// This client harness exercises the released Flash adapter. Native provider
+// transport has separate fixtures; unrelated keys must not change Auto here.
+const env = { DEEPSEEK_API_KEY: "fixture-only" };
+const providerKeys = ["DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"];
 const conversation = [{ role: "user", content: "Fixture question" }];
 const at = "2026-10-02T12:00:00.000Z";
 const route = selection => resolveAssistantModel(selection, assistantRequest(conversation), 100, env, at);
 function environment(t) {
-  const old = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
+  const old = Object.fromEntries(providerKeys.map(key => [key, process.env[key]]));
+  for (const key of providerKeys) delete process.env[key];
   Object.assign(process.env, env);
   t.after(() => { for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
 }
@@ -72,9 +76,11 @@ test("server routing accounts for actual framing, tools and images with the unch
     assert.equal(result.modelDecision.quote.estimateBasis, "uncached");
     assert.equal(result.modelDecision.quote.cacheHitGuaranteed, false);
   }
-  for (const modelId of ["deepseek-v4-pro", "gpt-6.1-sol", "claude-opus-5-5"]) {
+  for (const modelId of ["gpt-6.1-sol", "claude-opus-5-5"]) {
     assert.throws(() => resolveAssistantModel({ mode: "explicit", modelId }, assistantRequest(messages), 100, env, at), /unavailable/);
   }
+  assert.throws(() => resolveAssistantModel({ mode: "explicit", modelId: "deepseek-v4-pro" }, assistantRequest(messages), 100, env, at), /cannot support/, "Pro cannot receive images");
+  assert.throws(() => route({ mode: "explicit", modelId: "deepseek-v4-pro" }), /Not enough credits/, "text-only Pro requires its full reservation");
   assert.throws(() => resolveAssistantModel({ mode: "auto" }, assistantRequest(conversation), 1, env, at), /minimum reservation/);
   assert.throws(() => resolveAssistantModel({ mode: "auto" }, assistantRequest([{ role: "user", content: "x".repeat(200_000) }]), 100, env, at), /limits/);
 });

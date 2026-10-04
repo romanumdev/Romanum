@@ -16,6 +16,7 @@ import { gameAnalysisPrompt } from "@/lib/analytics/game-analysis";
 import { getGameIcons } from "@/lib/roblox-icons";
 import { GameEarningsPanel } from "@/components/analytics/revenue";
 import { publicGameMetadata, utcObservationTime } from "@/lib/public-discovery";
+import { SaveWatchlistButton } from "@/components/watchlists/save-watchlist-button";
 
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ universeId: string }> };
@@ -74,6 +75,8 @@ export default async function GamePage({ params }: Props) {
           <p className="mt-4 text-xs text-fg-subtle break-words">{game.genre ?? "Genre unavailable"}</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <a href={`https://www.roblox.com/games/${game.rootPlaceId}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-line px-3 text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-fg-muted">View on Roblox <ArrowUpRight className="size-4" aria-hidden="true" /></a>
+            <Link href={`/analytics/compare?universeIds=${game.universeId}&days=7`} prefetch={false} className="inline-flex min-h-11 items-center rounded-lg border border-line px-3 text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-fg-muted">Compare games</Link>
+            <SaveWatchlistButton universeId={game.universeId} name={game.name} />
             {own && <Link href={`/profile/settings/games#game-${own.game.id}`} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-line px-3 text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-fg-muted"><Settings className="size-4" aria-hidden="true" />Settings</Link>}
           </div>
           <dl className="mt-6 space-y-3 border-t border-line pt-5 text-xs">

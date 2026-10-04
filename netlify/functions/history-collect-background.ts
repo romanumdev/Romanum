@@ -19,6 +19,7 @@ export default async function historyCollect(request: Request) {
     });
     console.log("History collection:", JSON.stringify(result));
     if (!result.skipped && result.status !== "complete") console.error("History collection incomplete; unavailable observations are recorded as gaps.");
+    if (!result.skipped && result.alertStatus === "unavailable") console.error("Watchlist alert evaluation unavailable; public collection remains recorded.");
   } catch {
     throw new Error("History collection failed. Check the database diagnostics and recorded run.");
   } finally {

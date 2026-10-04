@@ -198,3 +198,23 @@ test("the complete thirty-day five-game bound retains every observed boundary sl
   assert.equal(result.games[0].recordedSpan.from, result.from);
   assert.equal(result.games[0].recordedSpan.to, result.cutoff);
 });
+
+
+test("growth uses shared endpoints, preserves zero baselines and refuses sparse evidence", async () => {
+  const { service } = fixture([run(0, { 1: 0, 2: 10 }), run(1, { 1: 10, 2: 15 }), run(2, { 1: 20, 2: 20 }), run(3, { 1: 999 })]);
+  const result = await service.compare({ universeIds: [1, 2] });
+  assert.equal(result.sameWindow.status, "compared");
+  const [left, right] = result.sameWindow.games;
+  assert.equal(left.absoluteChange, 20);
+  assert.equal(left.percentChange, null);
+  assert.equal(left.indexStatus, "zero_baseline");
+  assert.ok(left.series.every(point => point.index === null));
+  assert.equal(right.percentChange, 100);
+  assert.deepEqual(right.series.map(point => point.index), [100, 150, 200]);
+  assert.equal(right.first.slot, result.pairs[0].growth.right.first.slot);
+  assert.equal(left.series.length, 3);
+  assert.deepEqual(left.series[0].chartRanks, {});
+  const sparse = await fixture([run(0, { 1: 0, 2: 0 })]).service.compare({ universeIds: [1, 2] });
+  assert.deepEqual(sparse.sameWindow.games, []);
+  assert.equal(sparse.pairs[0].growth, null);
+});

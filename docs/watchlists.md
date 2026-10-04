@@ -1,0 +1,27 @@
+# Private game watches and in-app alerts
+
+`/analytics/watchlists` lets an account or signed browser guest save up to 20 public game watches. Each has up to five distinct public peers, a name, enabled flag, direction, threshold (5–500), minimum player count (1–1,000,000), and a 30- or 60-minute window. Universe IDs are Roblox universe identifiers, not place IDs. Explicit saving validates public metadata and enrolls games/peers in bounded public collection; metadata validation never creates an observation.
+
+Identity comes from the server's existing account/guest owner. A first free save may call `ensureGuestIdentity` to set the existing signed pending guest cookie. This neither verifies Turnstile nor grants credits, and does not change AI submission authorization. Creating a new account can adopt the guest owner ID. Signing into an existing account uses its own owner and does not merge guest watches. Losing a guest cookie loses access to that guest's private watches.
+
+## Public observations and rule interpretation
+
+Rules compare the mean of actual five-minute concurrent-player observations in the latest 30/60-minute window with the same UTC time yesterday. All six/twelve offsets must exist in both windows for the game and every peer. Retrieval timestamps must fall within their five-minute run slot and cannot be in the future; delayed collection cannot masquerade as an earlier observation. The current slot must be fresh within ten minutes. Missing observations, failed fetches and gaps never become zero. An actual observed zero remains valid.
+
+Without peers, the rule tests the game's percentage change. With peers, it subtracts the equal-weight mean peer percentage change and tests the difference in percentage points. Every game's baseline must meet the configured minimum player count; the saved game's absolute mean-player change must also meet that minimum. This suppresses unstable small-base alerts. These are descriptive public changes, not causal findings or evidence of revenue, retention or an experiment effect. Matching UTC time reduces a time-of-day difference but does not match weekday or establish causal comparability.
+
+One notification is emitted per threshold episode. Persistent state stays latched across missing/stale windows. A complete matched window must fall below 80% of the threshold or 80% of the absolute-player minimum to rearm. The state update and notification insert share an owner-locked transaction. Deterministic `watchlist:revision:slot` keys prevent duplicate delivery on retries even if latch state is lost. Editing a rule starts a new revision/episode. Acknowledgment marks a notification read; it does not rearm alerts.
+
+## Capacity, failures and retention
+
+The existing public collector keeps its 300-game maximum, ten-game upstream batches, three concurrent requests, and Netlify retry wrapper. At most 50 slots are reserved for saved games/peers, selected by oldest attempted collection; the remaining slots prioritize chart games. Chart games fill unused reserved capacity. A game shared by multiple private watches is fetched once. Private owner IDs and lists are never written to public observations or exposed through public APIs.
+
+At most 100 enabled rules are evaluated per collector pass, least recently evaluated first. This is bounded best-effort collection/evaluation; saving cannot guarantee five-minute coverage when demand exceeds capacity. New watches usually need at least a day to obtain yesterday's matched window. The UI reports waiting for incomplete/gapped coverage, unavailable latest fetches, and stale evaluation. Pausing alerts keeps the game saved/enrolled. Removing the last save stops requesting its collection, though chart membership can continue collecting it publicly.
+
+Only the latest 100 notifications per owner are retained. API reads return private, no-store responses. Mutations enforce same-site/origin checks, 8 KiB request bodies, strict inputs, revision conflicts and owner-scoped queries. Parent-scoped foreign keys prevent state/notification ownership mismatches. All three private tables use the existing closed-owner trigger. Deleting a watch cascades its state/notifications. Account export and closure use the three owner-scoped tables; public historical observations remain public after private deletion.
+
+## Deployment prerequisites and verification
+
+Apply migration `025_analytics_watchlists.sql` with the normal application migration review. Keep the existing five-minute Netlify history dispatch/background collector and its existing database configuration/dispatch authentication enabled; there is no new scheduler, credential or external delivery destination. If the existing collector is not configured/running, saving alone cannot produce alerts. Alert evaluation failures report `alertStatus: unavailable` while leaving successfully persisted public collection intact. No hosted configuration or production schema was changed during implementation.
+
+`node --test tests/watchlists.test.mjs` uses only isolated PGlite fixtures and injected public loaders. It verifies paired/peer thresholds, gaps/staleness/future evidence, real zero, privacy/revision/caps, closure guards/parent keys, persistent latch/recovery/dedupe, acknowledgment/cascade, free guest writes without credits, and reserved-capacity collection rotation. No test invokes real Roblox collection or paid providers.

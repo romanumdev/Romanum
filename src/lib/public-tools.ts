@@ -9,8 +9,19 @@ import { HISTORY_INPUT } from "./history/service.ts";
 import { IDEA_RESEARCH_INPUT, researchGameIdea } from "./idea-research.ts";
 import { currentEarnings, EARNINGS_MODEL_VERSION, GENRE_RATES } from "./analytics/earnings.ts";
 
+import { HISTORY_COMPARISON_INPUT, historyComparisonService } from "./analytics/history-comparison.ts";
+import { HISTORY_PEERS_INPUT, historyPeerService } from "./analytics/peer-selection.ts";
+
 const positiveId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 export const PUBLIC_TOOLS = {
+  compare_game_history: {
+    description: "Compare 2-5 games over one recorded 1-30 day UTC window. Returns raw CCU, indexed endpoint changes, actual chart placements, gaps and evidence floors. Zero baselines have no percentage/index. No updates, causes, retention or revenue are inferred. Public read only; no model cost.",
+    schema: HISTORY_COMPARISON_INPUT,
+  },
+  suggest_game_peers: {
+    description: "Suggest up to four peers from the latest recorded public chart run containing a game within 1-30 days. Prefers recorded genre then CCU size and labels fallbacks. An incomplete sample, not verified gameplay competitors. No provider or model calls.",
+    schema: HISTORY_PEERS_INPUT,
+  },
   estimate_game_earnings: {
     description: "Calculate low/high NET Earned Robux and pre-tax standard DevEx USD estimates from current public CCU and Romanum's published genre assumptions over 1–366 days. This is a constant-CCU projection, not actual revenue, historical earnings or a confidence interval. No database, private data or paid model call is needed. Use this before charting estimatedRobuxLow and estimatedRobuxHigh together.",
     schema: z.object({ universeIds: z.array(positiveId).min(1).max(10), days: z.number().int().min(1).max(366).default(30) }).strict(),
@@ -77,6 +88,14 @@ export function parsePlaceId(link: string): number {
 
 export async function runPublicTool(name: PublicToolName, input: unknown, service: PublicDataService = publicData): Promise<{ result: Record<string, unknown>; summary: string }> {
   switch (name) {
+    case "compare_game_history": {
+      const result = await historyComparisonService.compare(input);
+      return { result, summary: `${result.games.length} games; comparison ${result.status}` };
+    }
+    case "suggest_game_peers": {
+      const result = await historyPeerService.peers(input);
+      return { result, summary: `${result.peers.length} recorded peer suggestions` };
+    }
     case "estimate_game_earnings": {
       const { universeIds, days } = PUBLIC_TOOLS[name].schema.parse(input);
       const observation = await service.stats(universeIds);

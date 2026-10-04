@@ -233,9 +233,10 @@ test("the rendered card leads with prototypes, keeps evidence inspectable and st
   // Node strips .ts but not TSX. Transpile only the actual view modules, with no test copies or network.
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
+      if (specifier === "next/link") return nextResolve("next/link.js", context);
       let target;
       if (specifier.startsWith("@/")) target = new URL(`../src/${specifier.slice(2)}`, import.meta.url);
-      else if (specifier.startsWith(".") && context.parentURL?.startsWith("file:")) target = new URL(specifier, context.parentURL);
+      else if (specifier.startsWith(".") && context.parentURL?.startsWith(new URL("../src/", import.meta.url).href)) target = new URL(specifier, context.parentURL);
       if (target && !existsSync(fileURLToPath(target))) {
         for (const extension of [".ts", ".tsx"]) {
           if (existsSync(fileURLToPath(`${target.href}${extension}`))) return nextResolve(`${target.href}${extension}`, context);
@@ -267,12 +268,17 @@ test("the rendered card leads with prototypes, keeps evidence inspectable and st
     const markup = render(content);
     assert.match(markup, /Ideas to prototype/);
     assert.match(markup, /AI-generated design proposals need playtesting/);
-    const detailsStart = markup.indexOf("<details");
+    const evidenceDetails = /<details\b[^>]*>\s*<summary\b[^>]*>Evidence and sources<\/summary>/g;
+    const detailsStart = markup.search(evidenceDetails);
     assert.ok(detailsStart > markup.indexOf(content.recommendations[0].reason));
-    assert.equal(markup.match(/<details\b/g)?.length, 1);
+    assert.equal(markup.match(evidenceDetails)?.length, 1);
+    assert.match(markup, /Track this development task/);
     assert.ok(!/<details[^>]*\bopen(?:[\s=>])/.test(markup));
     assert.match(markup.slice(detailsStart), /Evidence and sources/);
-    assert.ok(!/coverage|unavailable|need playtesting|Empty results do not prove novelty/.test(markup.slice(0, detailsStart)));
+    const visibleLead = markup.slice(0, detailsStart)
+      .replace(/<textarea\b[^>]*>[\s\S]*?<\/textarea>/g, "")
+      .replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, "");
+    assert.ok(!/coverage|unavailable|need playtesting|Empty results do not prove novelty/.test(visibleLead));
     assert.ok(!markup.includes("Generated design hypothesis:"));
     assert.match(markup, /Chart observations/);
     assert.match(markup, /href="https:\/\/www\.roblox\.com\/games\/101"/);
@@ -292,7 +298,7 @@ test("the rendered card leads with prototypes, keeps evidence inspectable and st
     ], radar: [], dataAt: assembledAt, generatedAt: assembledAt });
     assert.match(old, /evidence links and retrieval times were not recorded/);
     assert.equal(old.match(/Earlier suggestions are unverified\./g)?.length, 1);
-    assert.ok(old.indexOf("Earlier suggestions are unverified.") < old.indexOf("<details"));
+    assert.ok(old.indexOf("Earlier suggestions are unverified.") < old.search(evidenceDetails));
     assert.ok(!old.includes("Retrieved <time"));
 
     const outageResearch = { status: "unavailable", games: [], searches: content.recommendations[0].research.searches.map((search) => ({
@@ -302,14 +308,14 @@ test("the rendered card leads with prototypes, keeps evidence inspectable and st
       { ...idea, research: outageResearch }, { ...idea, title: "Second Rescue", research: outageResearch },
     ]) });
     assert.equal(outage.match(/Competitor search could not run;/g)?.length, 1);
-    assert.ok(outage.indexOf("Competitor search could not run;") < outage.indexOf("<details"));
-    assert.match(outage.slice(outage.indexOf("<details")), /unavailable; results unknown/);
+    assert.ok(outage.indexOf("Competitor search could not run;") < outage.search(evidenceDetails));
+    assert.match(outage.slice(outage.search(evidenceDetails)), /unavailable; results unknown/);
 
     const stale = render({ ...content, marketEvidence: { ...content.marketEvidence, charts: content.marketEvidence.charts.map((chart) => (
       chart.status === "unavailable" ? chart : { ...chart, stale: true, expiresAt: assembledAt }
     )) } });
     assert.equal(stale.match(/Some chart observations were stale when assembled;/g)?.length, 1);
-    assert.ok(stale.indexOf("Some chart observations were stale when assembled;") < stale.indexOf("<details"));
-    assert.match(stale.slice(stale.indexOf("<details")), /expired when assembled/);
+    assert.ok(stale.indexOf("Some chart observations were stale when assembled;") < stale.search(evidenceDetails));
+    assert.match(stale.slice(stale.search(evidenceDetails)), /expired when assembled/);
   } finally { hooks.deregister(); }
 });
