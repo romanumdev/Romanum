@@ -8,11 +8,13 @@ import { SESSION_COOKIE } from "@/lib/accounts/session";
 import { signInAccount, startSession } from "@/lib/accounts/store";
 import { forgetGuest, readGuest } from "@/lib/guest";
 import { historyDatabase } from "@/lib/history/database";
+import { readAccount } from "@/lib/accounts/session";
+import { ANALYTICS_CONNECTION_COOKIE, analyticsOAuthEnabled, completeAnalyticsConnection } from "@/lib/linked-games/connection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const sameValue = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const sameValue = (a: string, b: string) => Buffer.byteLength(a) === Buffer.byteLength(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 /** Where to send the person: back where they started, or the profile with what went wrong. */
 async function finish(request: Request, attempt: SignInAttempt | null): Promise<string> {
@@ -50,6 +52,16 @@ async function finish(request: Request, attempt: SignInAttempt | null): Promise<
 /** Roblox sends the person back here with an authorization code, which signs them in. */
 export async function GET(request: Request) {
   const store = await cookies();
+  const connectionValue = store.get(ANALYTICS_CONNECTION_COOKIE.name)?.value;
+  const connectionAttempt = connectionValue ? verifiedAttempt(connectionValue, await secretsKey()) : null;
+  const callbackState = new URL(request.url).searchParams.get("state");
+  // Separate cookies/pinned states let ordinary sign-in continue independently.
+  if (connectionValue && ((!store.get(SIGN_IN_COOKIE.name)?.value) || (connectionAttempt && callbackState && sameValue(callbackState,connectionAttempt.state)))) {
+    store.set(ANALYTICS_CONNECTION_COOKIE.name,"",{ path: ANALYTICS_CONNECTION_COOKIE.path,maxAge:0 });
+    const database = analyticsOAuthEnabled() ? await historyDatabase().catch(() => null) : null;
+    if (!database) redirect("/profile/settings/games?connection=unavailable#link-game");
+    redirect(await completeAnalyticsConnection(request.url,connectionAttempt,await readAccount(),database,await secretsKey(),{ redirectUri: callbackUrl(request.url) }));
+  }
   const value = store.get(SIGN_IN_COOKIE.name)?.value;
   const attempt = value ? verifiedAttempt(value, await secretsKey()) : null;
   // Each attempt is used once.

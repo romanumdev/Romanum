@@ -27,7 +27,7 @@ async function fixture(t, fetch = async () => complete(series()), enabled = true
   const engine = await PGlite.create(); t.after(() => engine.close());
   const sql = client => ({ query: (text, values) => client.query(text, values), exec: text => client.exec(text) });
   const db = { ...sql(engine), transaction: fn => engine.transaction(client => fn(sql(client))), close: () => engine.close() };
-  for (const file of ["002_credits.sql", "010_usage.sql", "012_accounts.sql", "013_linked_games.sql", "014_usage_holds.sql", "018_tool_usage.sql", "020_private_analytics_ai.sql"]) await db.exec(await readFile(`db/migrations/${file}`, "utf8"));
+  for (const file of ["002_credits.sql", "010_usage.sql", "012_accounts.sql", "013_linked_games.sql", "014_usage_holds.sql", "018_tool_usage.sql", "020_private_analytics_ai.sql", "027_linked_game_oauth.sql"]) await db.exec(await readFile(`db/migrations/${file}`, "utf8"));
   const account = async user => {
     const id = randomUUID(), ownerId = `account:${id}`;
     await db.query("INSERT INTO accounts(id,roblox_user_id,owner_id,username,display_name) VALUES($1,$2,$3,'test','Test')", [id, user, ownerId]);

@@ -6,8 +6,8 @@ import type { ToolCall, ToolOutcome } from "../assistant/tools.ts";
 import type { ChartSpec } from "../charts/spec.ts";
 import { colorHex, PALETTE_ORDER } from "../charts/spec.ts";
 import { secretsKey } from "../secrets.ts";
-import { analyticsAccess, listLinkedGames, openAnalyticsKey, readGameMetrics } from "./store.ts";
-import { queryAnalytics, queryDimensionValues, OpenCloudError, type AnalyticsSeries, type OpenCloudOptions } from "./open-cloud.ts";
+import { analyticsAccess, listLinkedGames, openAnalyticsCredential, readGameMetrics } from "./store.ts";
+import { queryAnalytics, queryDimensionValues, OpenCloudError, type AnalyticsCredential, type AnalyticsSeries, type OpenCloudOptions } from "./open-cloud.ts";
 import { ANALYTICS_CATEGORIES, ANALYTICS_METRICS, CATEGORY_NOTES, CATALOG_CHECKED_AT, CATALOG_SOURCE, type AnalyticsMetric } from "./catalog.ts";
 
 const DAY = 86_400_000;
@@ -111,7 +111,7 @@ export function privateAnalyticsTools(database: Database, accountId: string, sig
     return current;
   };
   const checkAccess = async () => { for (const [id, snapshot] of snapshots) await access(id, snapshot); };
-  const upstream = async <T>(gameId: string, run: (apiKey: string, universeId: number, options: OpenCloudOptions) => Promise<T>) => {
+  const upstream = async <T>(gameId: string, run: (apiKey: AnalyticsCredential, universeId: number, options: OpenCloudOptions) => Promise<T>) => {
     if (++queryCount > MAX_QUERIES) throw new OpenCloudError("bad_request", "This answer reached its 24-query limit. Summarise the available evidence and continue in a follow-up.");
     const execute = async () => {
       options.signal?.throwIfAborted();
@@ -125,7 +125,7 @@ export function privateAnalyticsTools(database: Database, accountId: string, sig
         });
       }
       const snapshot = await access(gameId);
-      const apiKey = await openAnalyticsKey(database, accountId, gameId, snapshot.version, options.secretsKey ?? await secretsKey());
+      const apiKey = await openAnalyticsCredential(database, accountId, gameId, snapshot.version, options.secretsKey ?? await secretsKey(), { fetch: options.fetch, signal });
       if (!apiKey) throw new OpenCloudError("key_rejected", ACCESS_ERROR);
       await access(gameId, snapshot);
       lastQueryAt = Date.now();

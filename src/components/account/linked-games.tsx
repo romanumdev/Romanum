@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, ChevronRight, Plus, Settings, ThumbsUp, Users } from "lucide-react";
+import { ChevronRight, Plus, Settings, ThumbsUp, Users } from "lucide-react";
 import { GameIcon } from "@/components/game-icon";
+import { useVerifiedFetch } from "@/components/verification";
 import { MetricChange } from "./metric-change";
 import { Switch } from "@/components/switch";
 import { formatMetric } from "@/lib/linked-games/metrics";
@@ -11,7 +12,6 @@ import type { LinkedGameView } from "@/lib/linked-games/view";
 
 const FOCUS = "outline-offset-2 focus-visible:outline-2 focus-visible:outline-fg/70";
 const INPUT = `min-h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm text-fg placeholder:text-fg-subtle focus:border-line-strong ${FOCUS}`;
-const KEYS_PAGE = "https://create.roblox.com/dashboard/credentials?activeTab=ApiKeysTab";
 /** The metrics each game's card shows, labelled to fit its tiles; its game page shows them all. */
 const SUMMARY = [
   { metric: "DailyActiveUsers", label: "Daily active users" },
@@ -32,7 +32,7 @@ function ago(iso: string): string {
 }
 
 function statusLine(game: LinkedGameView): string {
-  if (game.status === "key_rejected") return game.syncError ?? "Roblox rejected the key. Link the game again with a new key.";
+  if (game.status === "key_rejected") return game.syncError ?? "Roblox access needs attention. Connect through Roblox again.";
   if (game.status === "disconnected") return "Disconnected. Link the game again to resume.";
   if (!game.collect) return "Collection off";
   if (game.syncing) return "Syncing…";
@@ -54,7 +54,7 @@ function GameCard({ game, settings, onChange, onRemove, onRelink }: { game: Link
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const name = game.name ?? `Universe ${game.universeId}`;
-  const hasKey = game.status !== "disconnected";
+  const connected = game.authorization !== "none" && game.status !== "disconnected";
 
   async function act(url: string, init: RequestInit) {
     setBusy(true);
@@ -71,13 +71,13 @@ function GameCard({ game, settings, onChange, onRemove, onRelink }: { game: Link
   }
 
   async function disconnect() {
-    if (!window.confirm(`Disconnect ${name}? Romanum deletes its copy of the key and stops syncing. The metrics stay until you delete them.`)) return;
+    if (!window.confirm(`Disconnect ${name}? Romanum removes its saved authorization and stops syncing. The metrics stay until you delete them.`)) return;
     const { game: updated } = await act(`/api/linked-games/${game.id}/disconnect`, { method: "POST" });
     if (updated) onChange(updated);
   }
 
   async function remove() {
-    if (!window.confirm(`Delete ${name} from Romanum? This deletes its key and all its synced metrics.`)) return;
+    if (!window.confirm(`Delete ${name} from Romanum? This deletes its saved authorization and all its synced metrics.`)) return;
     const result = await act(`/api/linked-games/${game.id}`, { method: "DELETE" });
     if (!result.error) onRemove();
   }
@@ -131,15 +131,15 @@ function GameCard({ game, settings, onChange, onRemove, onRelink }: { game: Link
           </Link>
           <p className="mt-0.5 text-xs text-fg-muted" role="status">
             {statusLine(game)}
-            {game.keyHint && <span className="text-fg-subtle"> · Key …{game.keyHint}</span>}
           </p>
         </div>
       </div>
 
+      {game.authorization === "legacy_key" && <p className="mt-3 text-xs leading-5 text-fg-muted">This game uses its existing encrypted key. Connect through Roblox to switch authorization without deleting saved metrics or changing your settings.</p>}
       <div className="mt-4 space-y-3 border-t border-line pt-4">
         <Switch
           label="Collect analytics"
-          description="Sync this game's daily metrics from Roblox with your key. Only you can see them."
+          description="Sync this game's authorized daily metrics from Roblox. Only you can see them."
           checked={game.collect}
           disabled={busy || game.status !== "active"}
           onChange={(value) => toggle("collect", value)}
@@ -163,12 +163,12 @@ function GameCard({ game, settings, onChange, onRemove, onRelink }: { game: Link
       {error && <p role="alert" className="mt-3 text-xs text-fg">{error}</p>}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {game.status !== "active" && (
+        {(game.status !== "active" || game.authorization !== "oauth") && (
           <button type="button" onClick={onRelink} className={`min-h-9 rounded-lg border border-line px-3 text-xs text-fg hover:bg-surface-hover ${FOCUS}`}>
-            Link again
+            Connect through Roblox
           </button>
         )}
-        {hasKey && (
+        {connected && (
           <button type="button" disabled={busy} onClick={disconnect} className={`min-h-9 rounded-lg border border-line px-3 text-xs text-fg hover:bg-surface-hover disabled:opacity-50 ${FOCUS}`}>
             Disconnect
           </button>
@@ -181,11 +181,11 @@ function GameCard({ game, settings, onChange, onRemove, onRelink }: { game: Link
   );
 }
 
-/** The signed-in account's linked games, and the form that links another with its Open Cloud API key. */
-export function LinkedGames({ initial, settings = false }: { initial: LinkedGameView[]; settings?: boolean }) {
+/** Optional Roblox game authorization is separate from account sign-in. */
+export function LinkedGames({ initial, settings = false, oauthAvailable = false }: { initial: LinkedGameView[]; settings?: boolean; oauthAvailable?: boolean }) {
   const [games, setGames] = useState(initial);
   const [universeId, setUniverseId] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const request = useVerifiedFetch();
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const idField = useRef<HTMLInputElement>(null);
@@ -208,24 +208,24 @@ export function LinkedGames({ initial, settings = false }: { initial: LinkedGame
 
   async function link(event: React.FormEvent) {
     event.preventDefault();
+    if (!oauthAvailable) return;
     setLinking(true);
     setError(null);
-    const result = await send("/api/linked-games", { method: "POST", body: JSON.stringify({ universeId, apiKey }) }).catch(() => ({
-      error: "Couldn't reach Romanum. Try again.",
-    }) as { game?: LinkedGameView; error?: string });
-    setLinking(false);
-    if (result.error || !result.game) return setError(result.error ?? "Something went wrong. Try again.");
-    const linked = result.game;
-    setGames((list) => [...list.filter((game) => game.id !== linked.id), linked]);
-    setUniverseId("");
-    setApiKey("");
+    try {
+      const response = await request("/auth/roblox/analytics", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ universeId }) });
+      const data = await response.json();
+      if (!response.ok || typeof data.url !== "string") throw new Error(data.error ?? "Unable to start the Roblox connection.");
+      window.location.assign(data.url);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to start the Roblox connection.");
+      setLinking(false);
+    }
   }
 
   function relink(game: LinkedGameView) {
     setUniverseId(String(game.universeId));
-    setApiKey("");
     idField.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    idField.current?.form?.querySelector<HTMLInputElement>("input[name=apiKey]")?.focus();
+    idField.current?.focus();
   }
 
   return (
@@ -260,43 +260,12 @@ export function LinkedGames({ initial, settings = false }: { initial: LinkedGame
         <h3 id="link-game-heading" className="text-sm font-medium">
           Link a game
         </h3>
-        <p className="mt-1 text-xs leading-5 text-fg-muted">
-          Create an API key with <span className="text-fg">universe-analytics</span> → <span className="text-fg">universe.analytics:read</span> for the game.
-          Romanum encrypts the key and never shows it again. It syncs daily active users, sessions, playtime, retention, revenue and payer conversion. Turn on AI analysis after linking for deeper private analytics.{" "}
-          <a href={KEYS_PAGE} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-0.5 rounded-sm text-fg underline-offset-2 hover:underline ${FOCUS}`}>
-            Creator Dashboard <ArrowUpRight className="size-3 text-white" aria-hidden="true" />
-          </a>
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
-          <label className="block">
-            <span className="text-xs text-fg-muted">Universe ID</span>
-            <input
-              ref={idField}
-              name="universeId"
-              value={universeId}
-              onChange={(event) => setUniverseId(event.target.value.replace(/\D/g, ""))}
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={16}
-              required
-              className={`mt-1 ${INPUT}`}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs text-fg-muted">API key</span>
-            <input
-              name="apiKey"
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={4096}
-              required
-              className={`mt-1 ${INPUT}`}
-            />
-          </label>
-        </div>
+        <p className="mt-1 text-xs leading-5 text-fg-muted">Enter the experience&apos;s universe ID and approve read-only analytics access on Roblox. Sign-in does not grant this access. Collection and AI analysis remain separate settings.</p>
+        {!oauthAvailable && <p className="mt-3 text-xs text-fg-muted">Roblox game authorization is not enabled yet. Existing connections and saved data remain available.</p>}
+        <label className="mt-4 block max-w-xs">
+          <span className="text-xs text-fg-muted">Universe ID</span>
+          <input ref={idField} name="universeId" value={universeId} onChange={(event) => setUniverseId(event.target.value.replace(/\D/g, ""))} inputMode="numeric" autoComplete="off" maxLength={16} required className={INPUT}/>
+        </label>
         {error && (
           <p role="alert" className="mt-3 text-xs text-fg">
             {error}
@@ -304,10 +273,10 @@ export function LinkedGames({ initial, settings = false }: { initial: LinkedGame
         )}
         <button
           type="submit"
-          disabled={linking || !universeId || !apiKey.trim()}
+          disabled={linking || !universeId || !oauthAvailable}
           className={`mt-4 min-h-11 rounded-lg bg-fg px-4 text-sm font-medium text-canvas hover:bg-white disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-fg-subtle ${FOCUS}`}
         >
-          {linking ? "Checking the key…" : "Link game"}
+          {linking ? "Opening Roblox" : "Connect through Roblox"}
         </button>
       </form>}
     </>

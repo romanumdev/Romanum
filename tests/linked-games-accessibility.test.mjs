@@ -42,6 +42,7 @@ test("card links have concise names, readable projected qualifiers and retained 
   });
   try {
     const { LinkedGames } = await import(new URL("../src/components/account/linked-games.tsx", import.meta.url).href);
+    const { VerificationProvider } = await import(new URL("../src/components/verification.tsx", import.meta.url).href);
     const series = [{ day: "2026-09-29", value: 100, status: null }, { day: "2026-09-30", value: 125, status: null }];
     const fixture = (status = null, name = "Rescue Squad") => ({
       id: "synthetic-game", universeId: 123, name, iconUrl: null, creatorName: "Fixture Creator",
@@ -50,12 +51,19 @@ test("card links have concise names, readable projected qualifiers and retained 
       metrics: [{ metric: "DailyActiveUsers", unit: "count", latest: { ...series[1], status },
         change: status === "Projected" ? null : dailyMetricChange(series, "count") }],
     });
-    const render = (game) => renderToStaticMarkup(createElement(LinkedGames, { initial: [game] }));
+    const render = (game, props = {}) => renderToStaticMarkup(createElement(VerificationProvider, null, createElement(LinkedGames, { initial: [game], ...props })));
     const complete = render(fixture());
     assert.match(complete, /<a[^>]*aria-label="View analytics for Rescue Squad"[^>]*>/);
     assert.match(complete, /<span class="sr-only">[^<]*relative change[^<]*Absolute change \+25/);
     assert.match(complete, /Daily active users/);
     assert.match(render(fixture(null, null)), /aria-label="View analytics for Universe 123"/);
+    const unavailable = render(fixture(), { settings: true, oauthAvailable: false });
+    assert.match(unavailable, /Roblox game authorization is not enabled yet/);
+    assert.match(unavailable, /<button[^>]*type="submit"[^>]*disabled=""[^>]*>Connect through Roblox/);
+    const available = render(fixture(), { settings: true, oauthAvailable: true });
+    assert.match(available, /name="universeId"/);
+    assert.match(available, /Connect through Roblox/);
+    assert.doesNotMatch(available, /type="password"|name="apiKey"|API key<\/span>/);
     const projected = render(fixture("Projected"));
     const labelClass = projected.match(/<span class="([^"]*)">Projected<\/span>/)?.[1];
     assert.ok(labelClass?.split(" ").includes("text-fg-muted"));

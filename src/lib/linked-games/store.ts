@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Database } from "../history/database.ts";
 import { openSecret, sealSecret } from "../secrets.ts";
+import { openGameOAuthCredential, saveGameOAuthGrant, OAuthError, type AnalyticsOAuthGrant, type OAuthOptions } from "./oauth.ts";
+import { OpenCloudError, type AnalyticsCredential } from "./open-cloud.ts";
 
-// Games an account linked with its own Open Cloud API key, and their private metrics. Every read and write is scoped
-// to the account. The key never leaves the server: it's stored sealed, and only its last four characters come back.
+// Account-scoped games and private metrics. Optional OAuth grants and retained legacy keys
+// are sealed on the server; their plaintext never enters a game response.
 
 /** Version of the short notices beside the collection and sharing switches, recorded with each choice. */
 export const CONSENT_NOTICE = "2026-09-30";
@@ -13,6 +15,7 @@ export type LinkedGameStatus = "active" | "key_rejected" | "disconnected";
 export type LinkedGame = {
   id: string;
   universeId: number;
+  authorization: "oauth" | "legacy_key" | "none";
   /** Collect analytics: whether its metrics sync from Roblox. */
   collect: boolean;
   /** Help improve Romanum: off by default. */
@@ -43,6 +46,7 @@ type Row = {
   sync_error: string | null;
   hint: string | null;
   expires_at: Date | string | null;
+  authorization: LinkedGame["authorization"];
 };
 
 const iso = (value: Date | string | null) => (value === null ? null : new Date(value).toISOString());
@@ -50,6 +54,7 @@ const iso = (value: Date | string | null) => (value === null ? null : new Date(v
 const toGame = (row: Row): LinkedGame => ({
   id: row.id,
   universeId: Number(row.universe_id),
+  authorization: row.authorization,
   collect: row.collect,
   share: row.share,
   aiAnalysis: row.ai_analysis,
@@ -61,9 +66,13 @@ const toGame = (row: Row): LinkedGame => ({
   keyExpiresAt: iso(row.expires_at),
 });
 
-const SELECT = `SELECT g.id, g.universe_id, g.collect, g.share, g.ai_analysis, g.status, g.synced_at, g.sync_error, k.hint, k.expires_at,
+const SELECT = `SELECT g.id, g.universe_id, g.collect, g.share, g.ai_analysis,
+  CASE WHEN o.reconnect_required AND g.status='active' THEN 'key_rejected' ELSE g.status END AS status, g.synced_at, g.sync_error,
+  CASE WHEN o.game_id IS NOT NULL THEN 'oauth' WHEN k.game_id IS NOT NULL THEN 'legacy_key' ELSE 'none' END AS authorization,
+  CASE WHEN o.game_id IS NULL THEN k.hint ELSE NULL END AS hint,
+  CASE WHEN o.game_id IS NULL THEN k.expires_at ELSE NULL END AS expires_at,
   (g.sync_started_at IS NOT NULL AND g.sync_started_at > now() - interval '10 minutes' AND (g.synced_at IS NULL OR g.synced_at < g.sync_started_at)) AS syncing
-  FROM linked_games g LEFT JOIN linked_game_keys k ON k.game_id = g.id`;
+  FROM linked_games g LEFT JOIN linked_game_keys k ON k.game_id = g.id LEFT JOIN linked_game_oauth o ON o.game_id=g.id`;
 
 /** A game's sealed key names its record, so it can't be moved to another game. */
 export const keyContext = (gameId: string) => `linked-game-key:${gameId}`;
@@ -123,6 +132,35 @@ export async function saveLinkedGame(
   return (await readLinkedGame(database, input.accountId, id))!;
 }
 
+/** An explicit verified OAuth connection preserves the game's data, choices and legacy key. */
+export async function saveOAuthLinkedGame(database: Database, input: { accountId: string; universeId: number; grant: AnalyticsOAuthGrant }, key: Buffer): Promise<LinkedGame> {
+  const id = await database.transaction(async sql => {
+    const { rows } = await sql.query<{ id: string; created: boolean }>(
+      `INSERT INTO linked_games(id,account_id,universe_id) VALUES ($1,$2,$3)
+       ON CONFLICT (account_id,universe_id) DO UPDATE SET status='active',sync_error=NULL,sync_started_at=NULL,consent_version=linked_games.consent_version+1
+       RETURNING id,(id=$1) AS created`, [randomUUID(),input.accountId,input.universeId]);
+    const game = rows[0];
+    const scoped: Database = { ...sql, transaction: operation => operation(sql), close: async () => {} };
+    await saveGameOAuthGrant(scoped,input.accountId,game.id,input.grant,key);
+    if (game.created) await recordConsent(sql,input.accountId,input.universeId,"collect",true);
+    return game.id;
+  });
+  return (await readLinkedGame(database,input.accountId,id))!;
+}
+
+/** OAuth is preferred once connected. Errors never fall back to a retained legacy key. */
+export async function openGameCredential(database: Database, accountId: string, gameId: string, key: Buffer, options: OAuthOptions = {}): Promise<AnalyticsCredential | null> {
+  const game = await readLinkedGame(database,accountId,gameId);
+  if (!game || game.status === "disconnected") return null;
+  try {
+    const oauth = await openGameOAuthCredential(database,accountId,gameId,key,options);
+    return oauth ?? await openGameKey(database,gameId,key);
+  } catch (error) {
+    if (error instanceof OAuthError) throw new OpenCloudError(error.kind === "unavailable" ? "unavailable" : "key_rejected",error.message);
+    throw error;
+  }
+}
+
 /**
  * Turns collecting analytics on or off. Off stops syncing, including a sync already under way, and keeps the stored
  * metrics. Each change is recorded with the notice shown beside the switch.
@@ -171,12 +209,21 @@ export async function setAiAnalysis(database: Database, accountId: string, gameI
 /** Server-only access snapshot. The account is supplied by the authenticated route, never the model. */
 export async function analyticsAccess(database: Database, accountId: string, gameId: string): Promise<{ universeId: number; version: number } | null> {
   const { rows } = await database.query<{ universe_id: string | number; consent_version: number }>(
-    `SELECT g.universe_id, g.consent_version FROM linked_games g JOIN linked_game_keys k ON k.game_id=g.id
+    `SELECT g.universe_id, g.consent_version FROM linked_games g LEFT JOIN linked_game_keys k ON k.game_id=g.id LEFT JOIN linked_game_oauth o ON o.game_id=g.id
      WHERE g.id=$1 AND g.account_id=$2 AND g.ai_analysis AND g.collect AND g.status='active'
-       AND (k.expires_at IS NULL OR k.expires_at > now())`,
+       AND ((o.game_id IS NOT NULL AND NOT o.reconnect_required) OR (o.game_id IS NULL AND k.game_id IS NOT NULL AND (k.expires_at IS NULL OR k.expires_at > now())))`,
     [gameId, accountId],
   );
   return rows[0] ? { universeId: Number(rows[0].universe_id), version: rows[0].consent_version } : null;
+}
+
+/** Revalidate private consent around opening either kind of server-only credential. */
+export async function openAnalyticsCredential(database: Database, accountId: string, gameId: string, version: number, key: Buffer, options: OAuthOptions = {}): Promise<AnalyticsCredential | null> {
+  const before = await analyticsAccess(database,accountId,gameId);
+  if (!before || before.version !== version) return null;
+  const credential = await openGameCredential(database,accountId,gameId,key,options);
+  const after = await analyticsAccess(database,accountId,gameId);
+  return after?.version === version ? credential : null;
 }
 
 /** Opens only this account's AI-enabled key at the captured consent version, even if linking changes concurrently. */
@@ -199,7 +246,10 @@ export async function disconnectGame(database: Database, accountId: string, game
        WHERE id=$1 AND account_id=$2 RETURNING id`,
       [gameId, accountId],
     );
-    if (rows[0]) await sql.query("DELETE FROM linked_game_keys WHERE game_id=$1", [gameId]);
+    if (rows[0]) {
+      await sql.query("DELETE FROM linked_game_keys WHERE game_id=$1", [gameId]);
+      await sql.query("DELETE FROM linked_game_oauth WHERE game_id=$1", [gameId]);
+    }
   });
   return readLinkedGame(database, accountId, gameId);
 }

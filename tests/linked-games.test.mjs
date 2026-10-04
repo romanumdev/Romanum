@@ -26,7 +26,7 @@ async function database(t) {
   t.after(() => engine.close());
   const sql = (client) => ({ query: (text, values) => client.query(text, values), exec: async (text) => { await client.exec(text); } });
   const db = { ...sql(engine), transaction: (operation) => engine.transaction((client) => operation(sql(client))), close: () => engine.close() };
-  for (const file of ["012_accounts.sql", "013_linked_games.sql", "020_private_analytics_ai.sql"]) await db.exec(await readFile(path.join(process.cwd(), "db", "migrations", file), "utf8"));
+  for (const file of ["012_accounts.sql", "013_linked_games.sql", "020_private_analytics_ai.sql", "027_linked_game_oauth.sql"]) await db.exec(await readFile(path.join(process.cwd(), "db", "migrations", file), "utf8"));
   return db;
 }
 
@@ -246,7 +246,7 @@ test("a rejected key pauses the game until it's linked again", async (t) => {
   // A secrets key that can't open the stored key asks for the game to be linked again rather than failing silently.
   await db.query("UPDATE linked_games SET sync_started_at = NULL");
   assert.equal((await syncLinkedGame(db, game.id, { fetch: analytics().fetch, sleep: noSleep, now: NOW, secretsKey: randomBytes(32) })).outcome, "key_rejected");
-  assert.match((await readLinkedGame(db, owner, game.id)).syncError, /Link the game again/);
+  assert.match((await readLinkedGame(db, owner, game.id)).syncError, /Reconnect this game through Roblox/);
 });
 
 test("Help improve Romanum shares nothing by default, and only days from when it was turned on", async (t) => {

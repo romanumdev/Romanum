@@ -1,8 +1,8 @@
 import type { Database } from "../history/database.ts";
 import { secretsKey } from "../secrets.ts";
 import { SYNCED_METRICS } from "./metrics.ts";
-import { OpenCloudError, queryDailyMetric, type OpenCloudOptions } from "./open-cloud.ts";
-import { openGameKey } from "./store.ts";
+import { OpenCloudError, queryDailyMetric, type AnalyticsCredential, type OpenCloudOptions } from "./open-cloud.ts";
+import { openGameCredential } from "./store.ts";
 
 // Syncs linked games' daily metrics from the Analytics Query API with their owners' keys. Consent is checked again
 // in the transaction that writes: a sync that started before its game's collection was turned off, its key was
@@ -21,18 +21,18 @@ const startOfUtcDay = (at: Date) => new Date(Date.UTC(at.getUTCFullYear(), at.ge
 export type SyncOptions = OpenCloudOptions & { now?: Date; secretsKey?: Buffer };
 export type SyncResult = { outcome: "synced" | "partial" | "skipped" | "discarded" | "key_rejected"; stored: number };
 
-type Claim = { universeId: number; consentVersion: number; firstSync: boolean };
+type Claim = { accountId: string; universeId: number; consentVersion: number; firstSync: boolean };
 
 /** Marks the game as syncing, unless it isn't collecting, has no key, or another sync started in the last ten minutes. */
 async function claim(database: Database, gameId: string): Promise<Claim | null> {
-  const { rows } = await database.query<{ universe_id: string | number; consent_version: number; synced_at: Date | string | null }>(
+  const { rows } = await database.query<{ account_id: string; universe_id: string | number; consent_version: number; synced_at: Date | string | null }>(
     `UPDATE linked_games SET sync_started_at=now()
      WHERE id=$1 AND status='active' AND collect AND (sync_started_at IS NULL OR sync_started_at < now() - interval '10 minutes')
-     RETURNING universe_id, consent_version, synced_at`,
+     RETURNING account_id, universe_id, consent_version, synced_at`,
     [gameId],
   );
   const row = rows[0];
-  return row ? { universeId: Number(row.universe_id), consentVersion: row.consent_version, firstSync: row.synced_at === null } : null;
+  return row ? { accountId: row.account_id, universeId: Number(row.universe_id), consentVersion: row.consent_version, firstSync: row.synced_at === null } : null;
 }
 
 /** Writes a sync's values if the game's consent is unchanged since the sync started; otherwise discards them. */
@@ -76,12 +76,17 @@ async function write(database: Database, gameId: string, claimed: Claim, values:
 export async function syncLinkedGame(database: Database, gameId: string, options: SyncOptions = {}): Promise<SyncResult> {
   const claimed = await claim(database, gameId);
   if (!claimed) return { outcome: "skipped", stored: 0 };
-  let apiKey: string | null;
+  let key: Buffer;
+  // One bounded metric can spend several minutes polling. Refresh before that
+  // window and check again between metrics, rather than retaining a near-expiry token.
+  const credentialOptions = { fetch: options.fetch, signal: options.signal };
+  let apiKey: AnalyticsCredential | null;
   try {
-    apiKey = await openGameKey(database, gameId, options.secretsKey ?? (await secretsKey()));
-  } catch {
+    key = options.secretsKey ?? (await secretsKey());
+    apiKey = await openGameCredential(database, claimed.accountId, gameId, key, credentialOptions);
+  } catch (error) {
     // The secrets key changed or the sealed key was altered: the person has to link the game again.
-    return write(database, gameId, claimed, [], new OpenCloudError("key_rejected", "Romanum couldn't open the stored key. Link the game again."));
+    return write(database, gameId, claimed, [], error instanceof OpenCloudError ? error : new OpenCloudError("key_rejected", "Reconnect this game through Roblox."));
   }
   if (!apiKey) return { outcome: "skipped", stored: 0 };
 
@@ -93,6 +98,16 @@ export async function syncLinkedGame(database: Database, gameId: string, options
   for (const [index, { metric }] of SYNCED_METRICS.entries()) {
     if (index > 0) await sleep(QUERY_SPACING_MS);
     try {
+      if (index > 0 && typeof apiKey !== "string") {
+        const current = await database.query<{ consent_version: number; collect: boolean; status: string }>(
+          "SELECT consent_version,collect,status FROM linked_games WHERE id=$1 AND account_id=$2", [gameId,claimed.accountId]);
+        if (!current.rows[0] || current.rows[0].consent_version !== claimed.consentVersion || !current.rows[0].collect || current.rows[0].status !== "active") {
+          return write(database,gameId,claimed,values,null);
+        }
+        const refreshed = await openGameCredential(database,claimed.accountId,gameId,key,credentialOptions);
+        if (!refreshed || typeof refreshed === "string") throw new OpenCloudError("key_rejected","Reconnect this game through Roblox.");
+        apiKey = refreshed;
+      }
       for (const point of await queryDailyMetric(apiKey, claimed.universeId, metric, { start, end }, { ...options, sleep })) values.push({ metric, ...point });
     } catch (error) {
       // A metric this experience can't be queried for is left out; anything else stops the sync for now.

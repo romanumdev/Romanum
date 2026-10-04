@@ -95,7 +95,8 @@ export class SignInError extends Error {
   }
 }
 
-const tokenResponse = z.object({ access_token: z.string().min(1), id_token: z.string().min(1) });
+const tokenResponse = z.object({ access_token: z.string().min(1).max(16384), id_token: z.string().min(1).max(32768) }).passthrough();
+export type CapturedOAuthTokens = z.infer<typeof tokenResponse>;
 const idTokenClaims = z.object({
   iss: z.string(),
   aud: z.union([z.string(), z.array(z.string())]),
@@ -159,7 +160,7 @@ async function send(request: typeof fetch, url: string, init: RequestInit, step:
 export async function completeSignIn(
   client: OAuthClient,
   input: { code: string; verifier: string; nonce: string; redirectUri: string },
-  options: { fetch?: typeof fetch; now?: number } = {},
+  options: { fetch?: typeof fetch; now?: number; captureTokens?: (tokens: CapturedOAuthTokens, profile: RobloxProfile) => void | Promise<void> } = {},
 ): Promise<RobloxProfile> {
   const request = options.fetch ?? fetch;
   const body = new URLSearchParams({
@@ -189,10 +190,13 @@ export async function completeSignIn(
   if (info.data.sub !== claims.sub) throw new SignInError("userinfo for another user");
 
   const username = trimmed(info.data.preferred_username, 100) ?? claims.sub;
-  return {
+  const profile: RobloxProfile = {
     userId: Number(claims.sub),
     username,
     displayName: trimmed(info.data.name, 100) ?? trimmed(info.data.nickname, 100) ?? username,
     pictureUrl: headshotUrl(info.data.picture),
   };
+  // Optional server-only capture runs only after the identity and nonce checks.
+  await options.captureTokens?.(tokens.data, profile);
+  return profile;
 }

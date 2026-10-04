@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-// Roblox Open Cloud calls made with a person's own API key: key introspection, and the Analytics Query API
-// (create.roblox.com/docs/cloud/guides/analytics), which is in beta. The key needs the universe.analytics:read
-// operation for the experience. Queries are bounded and rate-limit responses are handled without retries.
+// Analytics queries support OAuth Bearer tokens with universe.analytics:read, confirmed in Roblox's
+// reference/cloud/openapi.json. Previously saved owner keys remain supported during explicit reconnection.
+// Bodies, polling allowlists and request bounds are identical for both credentials.
 
 export const OPEN_CLOUD = {
   analytics: "https://apis.roblox.com/analytics-query-api/",
@@ -25,6 +25,7 @@ export class OpenCloudError extends Error {
 }
 
 export type OpenCloudOptions = { fetch?: typeof fetch; sleep?: (ms: number) => Promise<void>; signal?: AbortSignal };
+export type AnalyticsCredential = string | { accessToken: string };
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -37,8 +38,8 @@ async function call(request: typeof fetch, url: string, init: RequestInit, signa
     signal?.throwIfAborted();
     throw new OpenCloudError("unavailable", "Couldn't reach Roblox.");
   }
-  if (response.status === 401 || response.status === 403) throw new OpenCloudError("key_rejected", "Roblox rejected the API key for this game.");
-  if (response.status === 429) throw new OpenCloudError("rate_limited", "Roblox is rate limiting this key. Try again in a minute.");
+  if (response.status === 401 || response.status === 403) throw new OpenCloudError("key_rejected", "Roblox rejected this game's analytics access. Reconnect through Roblox.");
+  if (response.status === 429) throw new OpenCloudError("rate_limited", "Roblox is rate limiting this connection. Try again in a minute.");
   if (response.status === 404) throw new OpenCloudError("bad_request", "Roblox couldn't find that game.");
   if (response.status === 400) throw new OpenCloudError("bad_request", "Roblox refused the query.");
   if (!response.ok) throw new OpenCloudError("unavailable", `Roblox returned ${response.status}.`);
@@ -90,11 +91,11 @@ const dimensionsSchema = z.object({ values: z.array(z.object({ dimension: z.stri
 export type AnalyticsSeries = z.infer<typeof seriesSchema>["values"][number];
 export type AnalyticsDimension = z.infer<typeof dimensionsSchema>["values"][number];
 
-async function queryOperation<T>(apiKey: string, universeId: number, endpoint: "metrics" | "dimension-values", body: AnalyticsQuery | DimensionQuery, schema: z.ZodType<T>, options: OpenCloudOptions): Promise<T> {
+async function queryOperation<T>(apiKey: AnalyticsCredential, universeId: number, endpoint: "metrics" | "dimension-values", body: AnalyticsQuery | DimensionQuery, schema: z.ZodType<T>, options: OpenCloudOptions): Promise<T> {
   if (!Number.isSafeInteger(universeId) || universeId <= 0) throw new OpenCloudError("bad_request", "Invalid universe ID.");
   const request = options.fetch ?? fetch;
   const signal = options.signal;
-  const headers = { "x-api-key": apiKey, "content-type": "application/json", accept: "application/json" };
+  const headers = { ...(typeof apiKey === "string" ? { "x-api-key": apiKey } : { authorization: `Bearer ${apiKey.accessToken}` }), "content-type": "application/json", accept: "application/json" };
   const pollPath = new RegExp(`^v1/universes/${universeId}/operations/${endpoint}/[\\w.~-]{1,200}$`);
   let result = operation.safeParse(await call(request, `${OPEN_CLOUD.analytics}v1/universes/${universeId}/${endpoint}`, { method: "POST", headers, body: JSON.stringify(body) }, signal));
   for (let poll = 0; result.success && !result.data.done; poll++) {
@@ -122,12 +123,12 @@ async function queryOperation<T>(apiKey: string, universeId: number, endpoint: "
 }
 
 /** Numeric or text-valued series, preserving every breakdown, missing value and point status. */
-export async function queryAnalytics(apiKey: string, universeId: number, query: AnalyticsQuery, options: OpenCloudOptions = {}): Promise<AnalyticsSeries[]> {
+export async function queryAnalytics(apiKey: AnalyticsCredential, universeId: number, query: AnalyticsQuery, options: OpenCloudOptions = {}): Promise<AnalyticsSeries[]> {
   return (await queryOperation(apiKey, universeId, "metrics", query, seriesSchema, options)).values;
 }
 
 /** Raw values (used for filters) and human labels, including creator-defined funnel names and steps. */
-export async function queryDimensionValues(apiKey: string, universeId: number, query: DimensionQuery, options: OpenCloudOptions = {}): Promise<AnalyticsDimension[]> {
+export async function queryDimensionValues(apiKey: AnalyticsCredential, universeId: number, query: DimensionQuery, options: OpenCloudOptions = {}): Promise<AnalyticsDimension[]> {
   return (await queryOperation(apiKey, universeId, "dimension-values", query, dimensionsSchema, options)).values;
 }
 
@@ -138,7 +139,7 @@ export type DailyValue = { day: string; value: number; status: string | null };
  * the query while Roblox runs it as a long-running operation.
  */
 export async function queryDailyMetric(
-  apiKey: string,
+  apiKey: AnalyticsCredential,
   universeId: number,
   metric: string,
   range: { start: Date; end: Date },
