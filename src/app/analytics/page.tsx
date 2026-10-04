@@ -70,7 +70,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           <ExperimentsPanel />
         </InlineAnalyticsTool>
       </section>
-      <footer className="mt-10 flex flex-wrap gap-x-5 border-t border-line py-5 text-xs text-fg-subtle"><Link href="/privacy" className="inline-flex min-h-10 items-center rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-fg/70">Privacy policy</Link><Link href="/terms" className="inline-flex min-h-10 items-center rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-fg/70">Terms of service</Link></footer>
+      <footer className="mt-10 border-t border-line py-5 text-xs text-fg-subtle"><Link href="/privacy" className="inline-flex min-h-10 items-center rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-fg/70">Privacy policy</Link></footer>
     </>
   );
 }
