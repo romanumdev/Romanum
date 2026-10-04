@@ -37,6 +37,7 @@
 
 @layer base {
   html {
+    --mobile-nav-height: 0px;
     color-scheme: dark;
     background-color: var(--color-canvas);
   }
@@ -53,4 +54,15 @@
    bar against it and scrolls the page on focus and on every keystroke. */
 html:has([data-pinned-prompt]:not(:focus-within)) {
   scroll-padding-top: 6.5rem;
+}
+
+@media (width < 48rem) {
+  html {
+    --mobile-nav-height: calc(3.5rem + env(safe-area-inset-top) + 1px);
+    scroll-padding-top: calc(var(--mobile-nav-height) + 1rem);
+  }
+
+  html:has([data-pinned-prompt]:not(:focus-within)) {
+    scroll-padding-top: calc(var(--mobile-nav-height) + 4.5rem);
+  }
 }

@@ -21,7 +21,7 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
   const [input, setInput] = useState(initialPrompt);
   const [running, setRunning] = useState(false);
   const modelPicker = <ModelSelector compact catalog={models.catalog} selection={models.selection} onChange={models.setSelection}
-    loading={models.loading} error={models.error} disabled={running} className="min-w-0 max-w-32 sm:max-w-44" />;
+    loading={models.loading} error={models.error} disabled={running} className="min-w-0 max-w-24 sm:max-w-44" />;
   const abortRef = useRef<AbortController | null>(null);
   // An older stream may finish closing after the next question starts.
   const requestRef = useRef(0);
@@ -72,13 +72,22 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
   useEffect(() => {
     const band = bandRef.current;
     if (!band) return;
-    // A pinned band sits at the very top, so its top pixel falls outside a root shrunk by 1px.
-    const observer = new IntersectionObserver(
-      ([entry]) => setPinned(entry.intersectionRatio < 1 && entry.boundingClientRect.top < 1),
-      { rootMargin: "-1px 0px 0px 0px", threshold: 1 },
-    );
-    observer.observe(band);
-    return () => observer.disconnect();
+    const header = document.querySelector<HTMLElement>("[data-mobile-navigation]");
+    let observer: IntersectionObserver;
+    const observe = () => {
+      observer?.disconnect();
+      // On phones the prompt sticks below the menu and its safe-area inset.
+      const top = header?.getBoundingClientRect().height ?? 0;
+      observer = new IntersectionObserver(
+        ([entry]) => setPinned(entry.intersectionRatio < 1 && entry.boundingClientRect.top < top + 1),
+        { rootMargin: `-${top + 1}px 0px 0px 0px`, threshold: 1 },
+      );
+      observer.observe(band);
+    };
+    observe();
+    const resize = new ResizeObserver(observe);
+    if (header) resize.observe(header);
+    return () => { observer.disconnect(); resize.disconnect(); };
   }, [connected]);
 
   useEffect(() => {
@@ -228,8 +237,8 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
   // Once pinned, the bar springs into a narrower, centred pill, like Apple's Dynamic Island, and its buttons
   // round off to match.
   const reshape = "duration-500 ease-spring motion-reduce:transition-none";
-  const barShape = pinned ? "max-w-xl rounded-3xl" : "max-w-full rounded-xl";
-  const buttonShape = pinned ? "rounded-2xl" : "rounded-lg";
+  const barShape = pinned ? "max-w-full rounded-xl md:max-w-xl md:rounded-3xl" : "max-w-full rounded-xl";
+  const buttonShape = pinned ? "rounded-lg md:rounded-2xl" : "rounded-lg";
 
   // No wrapper element: a sticky element only sticks within its parent, and the bar stays pinned down the whole page.
   return (
@@ -240,17 +249,17 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
       <div
         ref={bandRef}
         data-pinned-prompt
-        className="pointer-events-none sticky top-0 z-30 -my-3 overflow-x-clip py-3 [@media(prefers-reduced-transparency:reduce)]:bg-canvas"
+        className="pointer-events-none sticky top-(--mobile-nav-height) z-30 -my-3 overflow-x-clip bg-canvas py-3 md:bg-transparent [@media(prefers-reduced-transparency:reduce)]:bg-canvas"
       >
         <form
           onSubmit={ask}
           aria-label="AI assistant"
-          className={`pointer-events-auto relative mx-auto flex h-12 items-center gap-3 border border-line bg-surface pr-2 pl-4 transition-[max-width,border-radius] focus-within:border-line-strong ${reshape} ${barShape}`}
+          className={`pointer-events-auto relative mx-auto flex h-12 items-center gap-2 border border-line bg-surface pr-2 pl-3 transition-[max-width,border-radius] focus-within:border-line-strong md:gap-3 md:pl-4 ${reshape} ${barShape}`}
         >
           {/* While pinned, the page around the bar is blurred, fading out 4rem beyond its ends and below it so the
               two blend. Sized from the bar, so it narrows along with it; it starts just above the screen's top edge. */}
           <div
-            className={`pointer-events-none absolute -inset-x-16 -top-4 -bottom-11 -z-10 backdrop-blur-xl transition-opacity [mask-image:linear-gradient(to_right,transparent,black_4rem,black_calc(100%_-_4rem),transparent),linear-gradient(to_bottom,black_calc(100%_-_2.75rem),transparent)] [mask-composite:intersect] [@media(prefers-reduced-transparency:reduce)]:hidden ${reshape} ${
+            className={`pointer-events-none absolute -inset-x-16 -top-4 -bottom-11 -z-10 hidden backdrop-blur-xl transition-opacity [mask-image:linear-gradient(to_right,transparent,black_4rem,black_calc(100%_-_4rem),transparent),linear-gradient(to_bottom,black_calc(100%_-_2.75rem),transparent)] [mask-composite:intersect] md:block [@media(prefers-reduced-transparency:reduce)]:hidden ${reshape} ${
               pinned ? "opacity-100" : "opacity-0"
             }`}
           />

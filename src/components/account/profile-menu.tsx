@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Gamepad2, LogIn, LogOut, Settings, X } from "lucide-react";
 import { Avatar } from "./avatar";
 import { Coin } from "../coin";
@@ -23,6 +23,11 @@ export function ProfileMenu({ account, credits, signInAvailable, children, class
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const settings = useRef<HTMLDialogElement>(null);
+  // Desktop navigation and the closed mobile drawer coexist; their popovers and
+  // settings dialogs need distinct targets and accessible heading references.
+  const id = useId();
+  const menuId = `${id}-account-menu`;
+  const settingsHeadingId = `${id}-settings-heading`;
   const [open, setOpen] = useState(false);
   const balance = typeof credits === "number" ? credits.toLocaleString("en-US") : credits === null ? "Unavailable" : "…";
 
@@ -81,7 +86,7 @@ export function ProfileMenu({ account, credits, signInAvailable, children, class
         aria-label="Account menu"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls="account-menu"
+        aria-controls={menuId}
         title="Account menu"
         className={className}
         onClick={() => open ? closeMenu() : showMenu()}
@@ -97,7 +102,7 @@ export function ProfileMenu({ account, credits, signInAvailable, children, class
 
       <div
         ref={menu}
-        id="account-menu"
+        id={menuId}
         popover="auto"
         role="menu"
         aria-label="Account"
@@ -139,7 +144,7 @@ export function ProfileMenu({ account, credits, signInAvailable, children, class
 
       <dialog
         ref={settings}
-        aria-labelledby="settings-heading"
+        aria-labelledby={settingsHeadingId}
         onClose={() => trigger.current?.focus()}
         onClick={(event) => {
           if (event.target !== event.currentTarget) return;
@@ -149,7 +154,7 @@ export function ProfileMenu({ account, credits, signInAvailable, children, class
         className="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-md max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-line bg-surface p-6 text-fg backdrop:bg-black/70"
       >
         <header className="mb-6 flex items-center justify-between gap-3">
-          <h2 id="settings-heading" className="text-lg font-semibold">Settings</h2>
+          <h2 id={settingsHeadingId} className="text-lg font-semibold">Settings</h2>
           <button type="button" autoFocus aria-label="Close settings" onClick={() => settings.current?.close()} className={`grid size-8 place-items-center rounded-lg hover:bg-surface-hover ${FOCUS}`}>
             <X className="size-5 text-white" aria-hidden="true" />
           </button>

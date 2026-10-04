@@ -357,7 +357,7 @@ export function ChatView({
     <div className={project ? `${contextStyles.workspace} ${contextExpanded ? contextStyles.workspaceExpanded : ""}` : undefined}>
     {/* The negative margin cancels the page's bottom padding, so the prompt bar can sit at the very bottom. */}
     <div
-      className={`mx-auto -mb-6 flex min-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-3xl flex-col sm:-mb-8 sm:min-h-[calc(100dvh-2rem)] ${
+      className={`mx-auto -mb-6 flex min-h-[calc(100dvh-var(--mobile-nav-height)-1.5rem)] w-full min-w-0 max-w-3xl flex-col sm:-mb-8 sm:min-h-[calc(100dvh-var(--mobile-nav-height)-2rem)] ${
         empty ? "justify-center pb-6 sm:pb-8" : ""
       }`}
     >
@@ -371,7 +371,7 @@ export function ChatView({
           <Transcript turns={turns} />
         </div>
       )}
-      {!(empty && project?.archived) && <div key="composer" className={empty ? "" : "sticky bottom-0 z-20 pb-4"}>
+      {!(empty && project?.archived) && <div key="composer" className={empty ? "" : "sticky bottom-0 z-20 pb-[max(1rem,env(safe-area-inset-bottom))]"}>
         {/* The conversation scrolls under the bar through a blur that fades out above it. */}
         {!empty && (
           <div className="pointer-events-none absolute inset-x-0 -top-10 bottom-0 -z-10 backdrop-blur-xl [mask-image:linear-gradient(to_top,black_calc(100%_-_2.5rem),transparent)] [@media(prefers-reduced-transparency:reduce)]:bg-canvas" />
