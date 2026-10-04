@@ -1,5 +1,10 @@
 # Studio bridge foundation
 
+The package now also supplies a [local read helper](HELPER.md) over the existing
+stdio adapter: structured connection/status, explicit Studio selection,
+correlated bounded inspections, cancellation and shutdown. Its runnable check
+uses the authored fixture; real launch requires separate owner activation.
+
 Local, mock-tested bridge scaffold. It connects to an injected **in-memory transport only in the supplied executable fixture**. It does not establish Roblox Studio access. No server, process launcher, listener, plugin, credential store or deployment is included.
 
 From the repository root, using the already installed Node.js 24 runtime:
