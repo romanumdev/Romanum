@@ -1,3 +1,5 @@
+import type { McpUsage } from "../mcp/usage.ts";
+
 export type AdminAccount = { id: string; ownerId: string; username: string; displayName: string; createdAt: string; balance: number | null; reserved: number | null };
 type Message = { ownerId: string; role: "user" | "assistant"; createdAt: string };
 type LedgerEntry = { ownerId: string; entryType: "grant" | "reserve" | "capture" | "release" | "adjust"; amount: number; balanceChange: number; createdAt: string };
@@ -5,7 +7,7 @@ type Usage = { ownerId: string; createdAt: string; costNanoUsd: number; priceNan
 type Tool = { status: "settled" | "released" | "reserved"; createdAt: string };
 type Run = { status: "complete" | "failed" | "cancelled"; finishedAt: string };
 type Insight = { costNanoUsd: number; finishedAt: string };
-export type AdminProjection = { accounts: AdminAccount[]; messages: Message[]; ledger: LedgerEntry[]; usage: Usage[]; tools: Tool[]; runs: Run[]; insights: Insight[] };
+export type AdminProjection = { accounts: AdminAccount[]; messages: Message[]; ledger: LedgerEntry[]; usage: Usage[]; tools: Tool[]; runs: Run[]; insights: Insight[]; mcpUsage?: McpUsage };
 
 export function adminUtc(value: string) {
   const time = new Date(value);
@@ -63,7 +65,8 @@ export function buildAdminReport(data: AdminProjection, asOf: string) {
     hostedCostNanoUsd, insightCostNanoUsd, providerCostNanoUsd: sum([hostedCostNanoUsd, insightCostNanoUsd]),
     usagePriceNanoUsd: sum(usage.map(row => row.priceNanoUsd)), usageCreditsCharged: sum(usage.map(row => row.creditsCharged)),
     modelCalls: sum(usage.map(row => row.modelCalls)), inputTokens: sum(usage.map(row => row.inputTokens)), outputTokens: sum(usage.map(row => row.outputTokens)),
-    publicUsage: { available: false as const, reason: "Public API, MCP, crawler and referral usage is not measured." },
+    publicUsage: { available: false as const, reason: "Public API, crawler and referral usage is not measured." },
+    mcpUsage: data.mcpUsage ?? ({ available: false, reason: "MCP aggregate recording is unavailable." } as McpUsage),
   };
 }
 export type AdminReport = ReturnType<typeof buildAdminReport>;

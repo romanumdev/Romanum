@@ -47,6 +47,7 @@ test("real SQL reporting enforces session ownership, read-only transactions and 
   await engine.query("INSERT INTO usage_charges(id,owner_id,feature,calls,cost_nano_usd,price_nano_usd,credits_charged,created_at) VALUES($1,$2,'chat',$3,170000000,281700000,27,$4)",[ids[7],owner.accountId,JSON.stringify([{input:7,output:3,secret:"PRIVATE CALL FIELD"},{input:4,output:2}]),ago(1)]);
   await engine.query("INSERT INTO insights(day,status,finished_at,cost_nano_usd) VALUES('2026-01-01','failed',$1,10000000)",[ago(1)]);
   await engine.query("SET timezone='Pacific/Auckland'");
+  await engine.query("INSERT INTO mcp_tool_usage_daily(day,tool_name,successful_calls,failed_calls) VALUES ((CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date,'search_games',3,1)");
   let token=tokens.owner;
   const service=createOwnerAdminService({token:async()=>token,database:async()=>db,owner:()=>owner});
   const clear=()=>{queries=[];};
@@ -80,6 +81,10 @@ test("real SQL reporting enforces session ownership, read-only transactions and 
     assert.equal(report.users.find(user=>user.id===other).available,0);
     assert.equal(report.users.find(user=>user.id===empty).available,null);
     assert.equal(report.publicUsage.available,false);
+    assert.equal(report.mcpUsage.available,true);
+    assert.equal(report.mcpUsage.totalCalls,4);
+    assert.equal(report.mcpUsage.successRate,0.75);
+    assert.equal(report.mcpUsage.popularTools[0].name,"search_games");
     assert.doesNotMatch(JSON.stringify(report),/PRIVATE|token|ownerId|content|events|payload|history|calls\":/);
     assert.ok(queries[0].includes("REPEATABLE READ, READ ONLY"));
     assert.ok(queries.some(sql=>sql.includes("LIMIT $3 OFFSET $4")));
@@ -132,6 +137,14 @@ test("real SQL reporting enforces session ownership, read-only transactions and 
       await sql.query("UPDATE credits_accounts SET balance=balance+1 WHERE owner_id=$1",[owner.accountId]);
     }),error=>error.code==="25006");
     assert.equal((await engine.query("SELECT balance FROM credits_accounts WHERE owner_id=$1",[owner.accountId])).rows[0].balance,200);
+  });
+  await t.test("missing MCP storage stays unavailable while the existing owner report remains usable",async()=>{
+    token=tokens.owner;
+    await engine.exec("DROP TABLE mcp_tool_usage_daily");
+    const result=await service();
+    assert.equal(result.status,"ok");
+    assert.equal(result.report.mcpUsage.available,false);
+    assert.equal(result.report.creditsSpent24h,27);
   });
   await t.test("deleted account loses access even if an old browser retains its cookie",async()=>{
     await engine.query("DELETE FROM accounts WHERE id=$1",[owner.accountId]);

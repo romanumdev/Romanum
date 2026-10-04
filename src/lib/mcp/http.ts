@@ -3,6 +3,7 @@ import { createMcpHandler, hostHeaderValidationResponse } from "@modelcontextpro
 import { createRomanumServer } from "./server.ts";
 import { createToolGate, RequestLimiter } from "./limits.ts";
 import { publicData, type PublicDataService } from "../public-data.ts";
+import type { McpToolUsageRecorder } from "./usage.ts";
 
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 
@@ -21,6 +22,7 @@ export function createMcpEndpoint(options: {
   requestLimit?: number;
   now?: () => number;
   service?: PublicDataService;
+  recordToolUsage?: McpToolUsageRecorder;
 } = {}) {
   const publicUrl = options.publicUrl ? configuredUrl(options.publicUrl) : undefined;
   const allowedHosts = publicUrl ? [publicUrl.hostname] : LOOPBACK_HOSTS;
@@ -28,7 +30,7 @@ export function createMcpEndpoint(options: {
   const globalLimit = new RequestLimiter(options.requestLimit ?? 300, options.now);
   const clientLimit = new RequestLimiter(60, options.now);
   const withSlot = createToolGate(8);
-  const handler = createMcpHandler(() => createRomanumServer(options.service ?? publicData, withSlot), {
+  const handler = createMcpHandler(() => createRomanumServer(options.service ?? publicData, withSlot, options.recordToolUsage), {
     legacy: "stateless", responseMode: "json", maxRequestBodySize: 16 * 1024, maxSubscriptions: 0,
   });
 

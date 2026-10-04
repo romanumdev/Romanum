@@ -4,6 +4,9 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { createMcpEndpoint } from "../src/lib/mcp/http.ts";
 import { createPublicDataService } from "../src/lib/public-data.ts";
 import { createToolGate, BusyError } from "../src/lib/mcp/limits.ts";
+import { PGlite } from "@electric-sql/pglite";
+import { readFile } from "node:fs/promises";
+import { createMcpUsageRecorder, queryMcpUsage } from "../src/lib/mcp/usage.ts";
 
 const URL = "http://localhost:3000/mcp";
 const fixture = { universeId: 123, name: "Test fixture", playing: 4 };
@@ -80,13 +83,37 @@ for (const mode of ["legacy", { pin: "2026-07-28" }]) {
 }
 
 test("upstream failures become safe tool errors without fabricated observations", async (t) => {
-  const endpoint = createMcpEndpoint({ service: createPublicDataService({ searchGames: async () => { throw new Error("secret upstream details"); } }) });
+  const endpoint = createMcpEndpoint({ service: createPublicDataService({ searchGames: async () => { throw new Error("secret upstream details"); } }),
+    recordToolUsage: async () => { throw new Error("private recording failure"); } });
   t.after(() => endpoint.close());
   const client = await connect(t, endpoint, "legacy");
+  assert.equal((await client.callTool({ name: "get_metric_definitions", arguments: {} })).isError, undefined);
   const result = await client.callTool({ name: "search_games", arguments: { query: "x" } });
   assert.equal(result.isError, true);
   assert.equal(result.structuredContent, undefined);
   assert.doesNotMatch(result.content[0].text, /secret/);
+});
+
+test("MCP records aggregate tool outcomes and reports counts, popularity and success rates without arguments", async t => {
+  const engine = await PGlite.create(); t.after(() => engine.close());
+  await engine.exec(await readFile(new globalThis.URL("../db/migrations/024_mcp_tool_usage.sql", import.meta.url), "utf8"));
+  const endpoint = createMcpEndpoint({
+    service: createPublicDataService({ searchGames: async () => { throw new Error("PRIVATE UPSTREAM"); } }),
+    recordToolUsage: createMcpUsageRecorder(async () => engine),
+  });
+  t.after(() => endpoint.close());
+  const client = await connect(t, endpoint, "legacy");
+  for (let index = 0; index < 2; index++) await client.callTool({ name: "get_metric_definitions", arguments: {} });
+  await client.callTool({ name: "load_skill", arguments: { skill: "romanum-game-design" } });
+  assert.equal((await client.callTool({ name: "search_games", arguments: { query: "PRIVATE PROMPT" } })).isError, true);
+  const usage = await queryMcpUsage(engine, new Date().toISOString());
+  assert.equal(usage.available, true);
+  assert.equal(usage.totalCalls, 4); assert.equal(usage.successfulCalls, 3); assert.equal(usage.failedCalls, 1);
+  assert.equal(usage.successRate, 0.75);
+  assert.equal(usage.popularTools[0].name, "get_metric_definitions"); assert.equal(usage.popularTools[0].totalCalls, 2);
+  const { rows } = await engine.query("SELECT * FROM mcp_tool_usage_daily");
+  assert.deepEqual(Object.keys(rows[0]).sort(), ["day", "failed_calls", "successful_calls", "tool_name"]);
+  assert.doesNotMatch(JSON.stringify(rows), /PRIVATE|query|arguments|prompt|owner|client/i);
 });
 
 test("HTTP rejects hostile origins/hosts and permits configured browser preflight", async (t) => {

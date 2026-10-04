@@ -49,6 +49,14 @@ test("023 prerequisite verifies history and role, preserves existing wallet stat
   const identity = (await database.query("SELECT current_user AS role,current_database() AS database")).rows[0];
   const role = createHash("sha256").update(`${identity.role}:${identity.database}`).digest("hex");
   assert.equal(await providerAccountingAvailable(database), false);
+  if (files.length > 23) {
+    // The one-off release must refuse later migrations rather than applying them under its old authorization.
+    await assert.rejects(applyNativeProviderPrerequisite(database, undefined, role));
+    assert.equal(await providerAccountingAvailable(database), false);
+    assert.deepEqual(await getBalance(database, { ownerId: "fixture-release" }), before);
+    assert.equal(await snapshot(), ledger);
+    return;
+  }
   await assert.rejects(applyNativeProviderPrerequisite(database, undefined, "0".repeat(64)));
   assert.equal(await providerAccountingAvailable(database), false);
   await database.query("UPDATE romanum_migrations SET checksum='changed' WHERE version=22");

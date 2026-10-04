@@ -1,5 +1,6 @@
 import type { Sql } from "../history/database.ts";
 import type { AdminReport } from "./report.ts";
+import { queryMcpUsage } from "../mcp/usage.ts";
 
 export const ADMIN_PAGE_SIZE = 100;
 export type OwnerAdminReport = AdminReport & { pagination: { page: number; pageSize: number; totalPages: number } };
@@ -70,7 +71,8 @@ export async function queryAdminReport(sql: Sql, requestedPage = 1): Promise<Own
     modelCalls:amount(calls[0].calls),inputTokens:amount(calls[0].input),outputTokens:amount(calls[0].output),
     meteredTools:{settled:amount(tools[0].settled),released:amount(tools[0].released),pending:amount(tools[0].pending)},
     backgroundRuns:{complete:amount(runs[0].complete),failed:amount(runs[0].failed),cancelled:amount(runs[0].cancelled)},
-    publicUsage:{available:false,reason:"Public API, MCP, crawler and referral usage is not measured."},
+    publicUsage:{available:false,reason:"Public API, crawler and referral usage is not measured."},
+    mcpUsage:await queryMcpUsage(sql,asOf),
     pagination:{page,pageSize:ADMIN_PAGE_SIZE,totalPages},
   };
 }

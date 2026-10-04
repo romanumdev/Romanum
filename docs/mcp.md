@@ -49,6 +49,12 @@ The website, integrated assistant and MCP share `src/lib/public-data.ts`. Public
 
 The implementation uses the [official TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) and [Streamable HTTP](https://modelcontextprotocol.io/specification/latest/basic/transports), with stateless compatibility for older clients. It has no persistent sessions or server subscriptions. A plain browser GET to `/mcp` returns 405; connect with an MCP client.
 
+## Aggregate tool usage
+
+Migration `024_mcp_tool_usage.sql` prepares daily UTC counters for each registered tool's successful and failed handler completions. The MCP route records only the tool name, day and outcome, with one atomic update. It stores no prompts, arguments, response bodies, request IDs, IPs, client names or account identifiers and does not charge credits. The existing owner-only admin report shows the last seven UTC days, total calls, success rate and five most-used tools; today is partial. A successful handler is not proof that the client received the response or that its data was exhaustive.
+
+Recording is best effort: missing storage or a database failure does not change the public tool result. Missing storage is reported as unavailable rather than zero. SDK protocol/schema rejections, unknown tools, resource reads, interrupted handlers without a final outcome, general public API traffic and referrals are outside this count. No historical usage can be backfilled. Apply the new migration only through a separately authorized release using the existing database role; this change does not apply it automatically or grant privileges.
+
 ## Hosting configuration
 
 Before exposing the endpoint, set `MCP_PUBLIC_URL` to its canonical HTTPS URL ending in `/mcp`. Without it, the server accepts only loopback hostnames. The reverse proxy must preserve the canonical Host header. Preview domains are not automatically trusted.

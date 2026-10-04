@@ -67,7 +67,17 @@ export function AdminDashboard({ report, state, mode = "fixture" }: { report: (A
       </section>
       <section className="grid gap-4 md:grid-cols-2">
         <div className={CARD}><h2 className="text-sm font-semibold">Holds and adjustments · 24h</h2><dl className="mt-4 space-y-3 text-sm"><Pair label="Released holds · credits" value={count(report.releasedHolds24h)} /><Pair label="Positive adjustments" value={`+${count(report.positiveAdjustments24h)}`} /><Pair label="Negative adjustments" value={`−${count(report.negativeAdjustments24h)}`} /><Pair label="Confirmed refund total" value="Unavailable" /></dl><p className="mt-4 text-xs leading-5 text-fg-muted">Releasing a hold does not debit or refund the balance. Adjustments lack a semantic refund type. Grants, holds and adjustments are excluded from captured spending.</p></div>
-        <div className={`${CARD} border-dashed`}><p className="text-xs text-fg-muted">MEASUREMENT NOT ENABLED</p><h2 className="mt-2 text-sm font-semibold">Public API, MCP and AI referrals</h2><p className="mt-4 text-sm leading-6 text-fg-muted">Unavailable. No telemetry measures public request demand, successful external MCP usage, crawlers or referred browser arrivals.</p><p className="mt-4 text-xs leading-5 text-fg-muted">No placeholder zero or adoption estimate is shown. No collection is enabled by this dashboard.</p></div>
+        <section className={CARD} aria-labelledby="mcp-usage-heading">
+          <h2 id="mcp-usage-heading" className="text-sm font-semibold">MCP tool usage</h2>
+          {report.mcpUsage.available ? <>
+            <p className="mt-2 text-xs text-fg-muted">7 UTC days: {report.mcpUsage.fromDay} → {report.mcpUsage.throughDay}. Today is partial.</p>
+            <dl className="mt-4 space-y-3 text-sm"><Pair label="Recorded calls" value={count(report.mcpUsage.totalCalls)} /><Pair label="Successful" value={count(report.mcpUsage.successfulCalls)} /><Pair label="Failed" value={count(report.mcpUsage.failedCalls)} /><Pair label="Success rate" value={report.mcpUsage.successRate === null ? "No calls recorded" : `${(report.mcpUsage.successRate * 100).toFixed(1)}%`} /></dl>
+            <h3 className="mt-5 text-xs font-semibold">Popular tools</h3>
+            {report.mcpUsage.popularTools.length ? <ul className="mt-3 space-y-2 text-xs">{report.mcpUsage.popularTools.map(tool => <li key={tool.name} className="flex flex-wrap justify-between gap-2"><span>{tool.name}</span><span className="tabular-nums text-fg-muted">{count(tool.totalCalls)} calls · {tool.successRate === null ? "—" : `${(tool.successRate * 100).toFixed(1)}% success`}</span></li>)}</ul> : <p className="mt-3 text-xs text-fg-muted">No calls recorded.</p>}
+          </> : <p className="mt-4 text-sm leading-6 text-fg-muted">{report.mcpUsage.reason}</p>}
+          <p className="mt-4 text-xs leading-5 text-fg-muted">Completed tool handlers only; protocol rejections and resource reads are excluded. Recording is best effort and does not establish unique users or client delivery.</p>
+          <p className="mt-3 text-xs leading-5 text-fg-muted">Public API, crawlers and AI referrals remain unmeasured.</p>
+        </section>
       </section>
     </>}
     <footer className="border-t border-line pt-5 text-xs leading-6 text-fg-subtle">{fixture ? "Fixture preview only. Live reporting requires the configured, approved owner account." : "Approved owner access · metadata and aggregates only."} No credit edits, impersonation or private message content.</footer>

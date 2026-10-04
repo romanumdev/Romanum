@@ -156,8 +156,14 @@ test("reports strip unrelated private fields and render explicit fixture/empty/e
   assert.doesNotMatch(JSON.stringify(report), /PRIVATE_|apiKey|events|content|ownerId/);
   const sample = renderToStaticMarkup(React.createElement(AdminDashboard, { report, state: "overview" }));
   assert.ok(sample.includes("Every value here is synthetic fixture data"));
-  assert.ok(sample.includes("Public API, MCP and AI referrals"));
-  assert.ok(sample.includes("Unavailable. No telemetry"));
+  assert.ok(sample.includes("MCP tool usage"));
+  assert.ok(sample.includes("MCP aggregate recording is unavailable."));
+  report.mcpUsage = { available: true, fromDay: "2026-09-26", throughDay: "2026-10-02", totalCalls: 4,
+    successfulCalls: 3, failedCalls: 1, successRate: 0.75,
+    popularTools: [{ name: "search_games", totalCalls: 4, successfulCalls: 3, failedCalls: 1, successRate: 0.75 }] };
+  const measured = renderToStaticMarkup(React.createElement(AdminDashboard, { report, state: "overview" }));
+  for (const text of ["Recorded calls", "Popular tools", "search_games", "75.0%", "Today is partial"]) assert.ok(measured.includes(text));
+  assert.ok(!measured.includes("MCP aggregate recording is unavailable."));
   assert.ok(sample.includes("Confirmed refund total"));
   assert.ok(sample.includes("not cash revenue or profit"));
   const empty = renderToStaticMarkup(React.createElement(AdminDashboard, { report: adminFixtureReport("empty"), state: "empty" }));
