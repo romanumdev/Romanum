@@ -7,6 +7,8 @@ import type { Insight } from "@/lib/insights/store";
 import type { Recommendation } from "@/lib/insights/store";
 import type { MarketTrendEvidence } from "@/lib/insights/trends";
 import { Wordmark } from "@/components/wordmark";
+import { ImplementationBriefCard } from "@/components/implementation/brief-card";
+import { recommendationImplementationBrief } from "@/lib/implementation/brief";
 
 const FOCUS = "outline-offset-2 focus-visible:outline-2 focus-visible:outline-fg/70";
 /** While today's insight is being written, check back this often, for up to about five minutes. */
@@ -190,6 +192,7 @@ export function RomanumInsight({ initial, today, connected, fitRow }: { initial:
                 <p className="mt-0.5 text-xs leading-5 text-fg-muted">
                   {idea.reason}
                 </p>
+                <ImplementationBriefCard brief={recommendationImplementationBrief(idea, insight.day)} />
               </li>
             ))}
           </ul>

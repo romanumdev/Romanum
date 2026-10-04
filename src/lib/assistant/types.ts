@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import type { ChartSpec } from "@/lib/charts/spec";
 import type { ProjectBrief } from "../projects/store.ts";
 import type { ModelId, ModelSelection, RouteDecision } from "../models/types.ts";
+import type { ImplementationBrief } from "../implementation/brief.ts";
 
 export type SavedPlanCard = { id: string; projectId: string; title: string; kind: "thumbnail" | "ui"; conceptCount: number };
 
@@ -28,9 +29,13 @@ export type AssistantEvent =
   | { type: "chart"; id: string; chart: ChartSpec }
   | { type: "asset_plan"; plan: SavedPlanCard }
   | { type: "project_context"; project: ProjectBrief }
+  | { type: "implementation_brief"; id: string; brief: ImplementationBrief }
+  | { type: "chat_offer"; reason: string }
+  /** Server acknowledgement after the answer has committed to owner-scoped chat storage. */
+  | { type: "conversation_saved"; chatId: string }
   | { type: "done"; messages: ApiMessage[] }
   /** Legacy event: ignored by clients and persistence; no longer generated. */
   | { type: "suggestion"; text: string }
-  /** Sent last: what the answer cost, in credits (usually a fraction of one). */
+  /** What the answer cost, in credits (usually a fraction of one). */
   | { type: "usage"; credits: number }
   | { type: "error"; message: string };

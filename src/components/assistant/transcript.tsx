@@ -1,4 +1,6 @@
 import Image from "next/image";
+import Link from "next/link";
+import { ImplementationBriefCard } from "@/components/implementation/brief-card";
 import { Brain, Check, ChevronRight, CircleAlert, LoaderCircle, X } from "lucide-react";
 import { ChartCard } from "@/components/charts/chart-card";
 import { Coin } from "@/components/coin";
@@ -134,7 +136,7 @@ function ProcessGroup({ steps, active, credits }: { steps: Step[]; active: boole
   );
 }
 
-function TurnView({ turn }: { turn: Turn }) {
+function TurnView({ turn, chatHref }: { turn: Turn; chatHref?: string }) {
   const text = [...turn.answer, turn.pending].filter(Boolean).join("\n\n");
   // The process line shows while the model works, and afterwards if it did anything.
   const working = !turn.done && !turn.pending;
@@ -166,6 +168,11 @@ function TurnView({ turn }: { turn: Turn }) {
         <ChartCard key={id} chart={chart} />
       ))}
       {turn.plans.map((plan) => <PlanCard key={plan.id} plan={plan} />)}
+      {(turn.briefs ?? []).map(({ id, brief }) => <ImplementationBriefCard key={id} brief={brief} />)}
+      {turn.chatOffer && chatHref && turn.done && <div className="flex flex-wrap items-center gap-2 text-sm">
+        <p className="text-fg-muted">{turn.chatOffer}</p>
+        <Link href={chatHref} prefetch={false} className="rounded-lg border border-line px-3 py-2 text-fg hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2">Take this to chat</Link>
+      </div>}
       {text && (
         // Charts may use the full width; prose stays at a comfortable line length.
         <div className="max-w-3xl text-sm leading-6 text-fg">
@@ -188,11 +195,12 @@ function TurnView({ turn }: { turn: Turn }) {
   );
 }
 
-export function Transcript({ turns }: { turns: Turn[] }) {
+export function Transcript({ turns, chatId }: { turns: Turn[]; chatId?: string | null }) {
+  const chatHref = typeof chatId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chatId) ? `/chats/${chatId}` : undefined;
   return (
     <div className="space-y-6">
       {turns.map((turn) => (
-        <TurnView key={turn.id} turn={turn} />
+        <TurnView key={turn.id} turn={turn} chatHref={chatHref} />
       ))}
     </div>
   );

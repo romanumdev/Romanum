@@ -7,8 +7,13 @@ import { buildChart } from "./chart-tool.ts";
 import type { FetchedData } from "./fetched-data";
 import type { SavedPlanCard } from "./types";
 import type { ProjectBrief } from "../projects/store.ts";
+import { implementationBriefSchema, type ImplementationBrief } from "../implementation/brief.ts";
+
+const chatOfferSchema = z.object({ reason: z.string().trim().min(1).max(240) }).strict();
 
 export const TOOLS: OpenAI.Chat.ChatCompletionFunctionTool[] = [
+  { type: "function", function: { name: "create_implementation_brief", description: "Show a copyable AI coding brief for the user's agreed Roblox idea or analytics recommendation. Include relevant game context, requested requirements and concrete acceptance criteria. Preserve uncertainty and label proposed design assumptions. This prepares text only; it does not run code.", parameters: z.toJSONSchema(implementationBriefSchema, { target: "draft-7", io: "input" }) } },
+  { type: "function", function: { name: "offer_chat_continuation", description: "Offer a user-clicked Take this to chat button when an analytics conversation is ready for deeper design or implementation. Supply a short reason. The application chooses the existing saved conversation; this never navigates, creates a chat, sends a message or executes code.", parameters: z.toJSONSchema(chatOfferSchema, { target: "draft-7", io: "input" }) } },
   ...Object.entries(PUBLIC_TOOLS).map(([name, tool]): OpenAI.Chat.ChatCompletionFunctionTool => ({
     type: "function",
     function: { name, description: tool.description, parameters: z.toJSONSchema(tool.schema, { target: "draft-7", io: "input" }) },
@@ -47,6 +52,8 @@ export const TOOLS: OpenAI.Chat.ChatCompletionFunctionTool[] = [
 ];
 
 const LABELS: Record<string, string> = {
+  create_implementation_brief: "Prepare implementation brief",
+  offer_chat_continuation: "Offer chat continuation",
   list_ad_reports: "Find imported ads reports",
   read_ad_report: "Read imported ads evidence",
   compare_ad_reports: "Compare ads evidence",
@@ -85,7 +92,7 @@ export type ToolCall = {
 };
 
 export type ToolOutcome =
-  | { ok: true; result: unknown; summary: string; chart?: ChartSpec; plan?: SavedPlanCard; project?: ProjectBrief }
+  | { ok: true; result: unknown; summary: string; chart?: ChartSpec; plan?: SavedPlanCard; project?: ProjectBrief; brief?: ImplementationBrief; chatOffer?: { reason: string } }
   | { ok: false; error: string };
 
 function parseArgs(raw: string): Record<string, unknown> {
@@ -99,6 +106,10 @@ function parseArgs(raw: string): Record<string, unknown> {
 
 function describe(name: string, args: Record<string, unknown>): { activity: string; detail: string } {
   switch (name) {
+    case "create_implementation_brief":
+      return { activity: "Preparing a copyable implementation brief", detail: String(args.title ?? "") };
+    case "offer_chat_continuation":
+      return { activity: "Preparing chat continuation", detail: "" };
     case "list_my_linked_games":
       return { activity: "Finding your linked games", detail: "" };
     case "get_private_analytics_catalog":
@@ -165,6 +176,16 @@ export function prepareCall(name: string, rawArgs: string): ToolCall {
 /** The assistant and MCP share validated data tools; chart rendering stays local to chat. */
 export async function runTool({ name, args }: ToolCall, data: FetchedData): Promise<ToolOutcome> {
   try {
+    if (name === "create_implementation_brief") {
+      const parsed = implementationBriefSchema.safeParse(args);
+      if (!parsed.success) return { ok: false, error: "Supply a title, context, goal, requirements and acceptance criteria within the brief limits." };
+      return { ok: true, result: { prepared: true, title: parsed.data.title }, summary: "Implementation brief ready to copy", brief: parsed.data };
+    }
+    if (name === "offer_chat_continuation") {
+      const parsed = chatOfferSchema.safeParse(args);
+      if (!parsed.success) return { ok: false, error: "Supply a short reason only." };
+      return { ok: true, result: { offered: true }, summary: "Chat continuation offered", chatOffer: parsed.data };
+    }
     if (isPublicTool(name)) return { ok: true, ...await runPublicTool(name, args) };
     if (name !== "create_chart") return { ok: false, error: "Unknown tool." };
     const built = buildChart(args, data);

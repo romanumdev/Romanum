@@ -192,16 +192,17 @@ export async function saveAnswer(
   database: Database,
   input: { ownerId: string; chatId: string; question: ApiMessage; turn: ApiMessage[] | null; events: TimedEvent[] },
 ) {
-  await database.transaction(async (sql) => {
+  return database.transaction(async (sql) => {
     await sql.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [input.ownerId]);
     const { rows } = await sql.query<{ history: ApiMessage[] }>("SELECT history FROM chats WHERE id=$1 AND owner_id=$2 FOR UPDATE", [input.chatId, input.ownerId]);
     // The chat was deleted while the answer streamed.
-    if (!rows[0]) return;
+    if (!rows[0]) return false;
     // An unfinished answer can stop mid tool call, which the model can't be shown again, so only its question stays.
     const question: ApiMessage = { role: "user", content: messageText(input.question) };
     const history = recentHistory([...rows[0].history, question, ...(input.turn ?? [])], MAX_STORED_HISTORY);
     await sql.query("INSERT INTO chat_messages(id, chat_id, role, events) VALUES ($1,$2,'assistant',$3)", [randomUUID(), input.chatId, JSON.stringify(input.events)]);
     await sql.query("UPDATE chats SET history=$2, updated_at=now() WHERE id=$1", [input.chatId, JSON.stringify(history)]);
+    return true;
   });
 }
 

@@ -10,6 +10,8 @@ import { PREFILL_EVENT, type AssistantPrefill } from "./prefill";
 import { useVerifiedFetch } from "../verification";
 import { ModelSelector } from "../models/model-selector";
 import { useModelCatalog } from "../models/use-model-catalog";
+import Link from "next/link";
+import { useSavedAsk } from "./use-saved-ask";
 
 const FOCUS = "outline-offset-2 focus-visible:outline-2 focus-visible:outline-fg/70";
 
@@ -17,15 +19,30 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
   const verifiedFetch = useVerifiedFetch();
   const models = useModelCatalog();
   const [input, setInput] = useState(initialPrompt);
-  const [turns, setTurns] = useState<Turn[]>([]);
-  // The conversation in API form, including tool results and DeepSeek's reasoning, sent back on each question.
-  const [history, setHistory] = useState<ApiMessage[]>([]);
   const [running, setRunning] = useState(false);
   const modelPicker = <ModelSelector compact catalog={models.catalog} selection={models.selection} onChange={models.setSelection}
     loading={models.loading} error={models.error} disabled={running} className="min-w-0 max-w-32 sm:max-w-44" />;
   const abortRef = useRef<AbortController | null>(null);
   // An older stream may finish closing after the next question starts.
   const requestRef = useRef(0);
+  const conversation = useSavedAsk(() => {
+    abortRef.current?.abort();
+    requestRef.current++;
+    setRunning(false);
+  });
+  const { turns, setTurns } = conversation;
+  const canAsk = connected && models.canSend && !conversation.loading && !conversation.restoreError && (!conversation.chatId || conversation.saved);
+  const conversationControls = <div className="my-2 flex flex-wrap items-center gap-3 text-xs text-fg-muted">
+    {conversation.loading ? <span role="status">Loading conversation.</span> : conversation.restoreError ? <>
+      <span role="status">{conversation.restoreError}</span>
+      <button type="button" onClick={() => void conversation.retry()} className={`underline underline-offset-4 ${FOCUS}`}>Retry</button>
+    </> : turns.length > 0 ? <>
+      <span>{conversation.saved ? "Saved in Chats." : running ? "Saving this conversation." : "Conversation saving has not been confirmed."}</span>
+      {!conversation.saved && !running && conversation.chatId && <button type="button" onClick={() => void conversation.retry()} className={`underline underline-offset-4 ${FOCUS}`}>Reload saved conversation</button>}
+      {conversation.saved && conversation.chatId && !turns.some(turn => turn.chatOffer) && <Link href={`/chats/${conversation.chatId}`} prefetch={false} className={`underline underline-offset-4 ${FOCUS}`}>Take this to chat</Link>}
+      <button type="button" disabled={running} onClick={conversation.reset} className={`underline underline-offset-4 disabled:opacity-40 ${FOCUS}`}>New conversation</button>
+    </> : <span>Conversations are saved privately in Chats.</span>}
+  </div>;
   const scrollRef = useRef<HTMLDivElement>(null);
   const bandRef = useRef<HTMLDivElement>(null);
   // Whether the bar is pinned to the top of the screen; the blur behind it only shows then.
@@ -82,7 +99,7 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
   }
 
   async function askQuestion(question: string, displayQuestion = question) {
-    if (!connected || !models.canSend || !question || running) return;
+    if (!canAsk || !question || running) return;
 
     // Close any remaining stream from the previous answer.
     abortRef.current?.abort();
@@ -97,19 +114,22 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
     revealRef.current = true;
     setInput("");
     setRunning(true);
+    conversation.setSaved(false);
     setTurns((prev) => [...prev, newTurn(turnId, displayQuestion)]);
 
     try {
       const res = await verifiedFetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: [...history, userMessage], modelSelection: models.selection }),
+        body: JSON.stringify({ messages: [userMessage], modelSelection: models.selection, saveConversation: true, chatId: conversation.chatId }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? `The assistant request failed (${res.status}).`);
       }
+      const storedId = res.headers.get("x-chat-id");
+      if (storedId && request === requestRef.current) await conversation.remember(storedId, false);
 
       // The route streams one JSON event per line.
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -124,11 +144,9 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
           buffer = buffer.slice(newline + 1);
           if (!line) continue;
           const parsed = JSON.parse(line) as AssistantEvent;
+          if (request !== requestRef.current) return;
           if (parsed.type === "suggestion") continue; // Ignore legacy server events during deploys.
-          if (parsed.type === "done") {
-            setHistory((prev) => [...prev, userMessage, ...parsed.messages]);
-            setRunning(false);
-          }
+          if (parsed.type === "conversation_saved" && parsed.chatId === storedId) await conversation.remember(parsed.chatId, true);
           update((turn) => applyEvent(turn, parsed, Date.now()));
           if (parsed.type === "usage") window.dispatchEvent(new Event(CREDITS_CHANGED));
         }
@@ -151,20 +169,21 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
 
   if (analysisPrompt) return (
     <div>
+      {conversationControls}
       {turns.length === 0 && <div className="mb-3">{modelPicker}</div>}
-      {turns.length === 0 && <button type="button" disabled={!connected || !models.canSend || running} onClick={() => void askQuestion(analysisPrompt, "Analyse this game and suggest what I should test next.")} className={`inline-flex min-h-11 items-center gap-2 rounded-lg bg-fg px-4 text-sm font-medium text-canvas hover:bg-white disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-fg-subtle ${FOCUS}`}>
+      {turns.length === 0 && <button type="button" disabled={!canAsk || running} onClick={() => void askQuestion(analysisPrompt, "Analyse this game and suggest what I should test next.")} className={`inline-flex min-h-11 items-center gap-2 rounded-lg bg-fg px-4 text-sm font-medium text-canvas hover:bg-white disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-fg-subtle ${FOCUS}`}>
         <Sparkles className="size-4" aria-hidden="true" />Analyse with AI
       </button>}
       {!connected && <p role="status" className="mt-3 text-sm text-fg-muted">The AI assistant isn&apos;t connected here.</p>}
       {turns.length > 0 && <>
         <div ref={scrollRef} aria-busy={running} className="mt-4 max-h-[min(70vh,48rem)] overflow-y-auto rounded-xl border border-line p-4" onScroll={(event) => { const el = event.currentTarget; followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; }}>
-          <Transcript turns={turns} />
+          <Transcript turns={turns} chatId={conversation.saved && !running ? conversation.chatId : null} />
         </div>
         <form onSubmit={ask} aria-label="Ask about this game" className="mt-3 flex min-h-12 items-center gap-3 rounded-xl border border-line bg-surface pr-2 pl-4">
           <label htmlFor="game-ai-prompt" className="sr-only">Ask about this game</label>
           {modelPicker}
           <input id="game-ai-prompt" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ask about this game…" maxLength={4000} className="min-w-0 flex-1 bg-transparent text-sm placeholder:text-fg-subtle focus:outline-none" />
-          {running ? <button type="button" onClick={() => abortRef.current?.abort()} aria-label="Stop" className={`grid size-9 shrink-0 place-items-center rounded-lg bg-surface-hover ${FOCUS}`}><Square className="size-3.5 fill-current" aria-hidden="true" /></button> : <button type="submit" disabled={!connected || !models.canSend || !input.trim()} aria-label="Send" className={`grid size-9 shrink-0 place-items-center rounded-lg bg-fg text-canvas disabled:opacity-40 ${FOCUS}`}><ArrowUp className="size-4" aria-hidden="true" /></button>}
+          {running ? <button type="button" onClick={() => abortRef.current?.abort()} aria-label="Stop" className={`grid size-9 shrink-0 place-items-center rounded-lg bg-surface-hover ${FOCUS}`}><Square className="size-3.5 fill-current" aria-hidden="true" /></button> : <button type="submit" disabled={!canAsk || !input.trim()} aria-label="Send" className={`grid size-9 shrink-0 place-items-center rounded-lg bg-fg text-canvas disabled:opacity-40 ${FOCUS}`}><ArrowUp className="size-4" aria-hidden="true" /></button>}
         </form>
       </>}
       <p role="status" className="sr-only">{running ? "Analysing this game. Advice will appear here." : ""}</p>
@@ -261,7 +280,7 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
           ) : (
             <button
               type="submit"
-              disabled={!models.canSend || !input.trim()}
+              disabled={!canAsk || !input.trim()}
               aria-label="Send"
               className={`grid size-8 shrink-0 place-items-center bg-white text-black transition-[border-radius] disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-white/40 ${reshape} ${buttonShape} ${FOCUS}`}
             >
@@ -271,6 +290,7 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
         </form>
       </div>
 
+      {conversationControls}
       {turns.length > 0 && (
         <div
           ref={scrollRef}
@@ -281,7 +301,7 @@ export function Assistant({ connected, initialPrompt = "", analysisPrompt }: { c
           aria-busy={running}
           className="mt-3 max-h-[min(70vh,48rem)] overflow-y-auto rounded-xl border border-line p-4"
         >
-          <Transcript turns={turns} />
+          <Transcript turns={turns} chatId={conversation.saved && !running ? conversation.chatId : null} />
         </div>
       )}
       <p role="status" className="sr-only">

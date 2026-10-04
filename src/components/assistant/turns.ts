@@ -1,6 +1,7 @@
 import type { ChartSpec } from "@/lib/charts/spec";
 import type { AssistantEvent, SavedPlanCard } from "@/lib/assistant/types";
 import { MODEL_IDS, type ModelId, type ModelSelection, type RouteDecision } from "../../lib/models/types.ts";
+import { implementationBriefSchema, type ImplementationBrief } from "../../lib/implementation/brief.ts";
 
 export type Step =
   | { kind: "thinking"; id: string; text: string; startedAt: number; endedAt: number | null }
@@ -30,6 +31,8 @@ export type Turn = {
   steps: Step[];
   charts: { id: string; chart: ChartSpec }[];
   plans: SavedPlanCard[];
+  briefs?: { id: string; brief: ImplementationBrief }[];
+  chatOffer?: string;
   answer: string[];
   /** Text still streaming: it becomes a note if more steps follow, or part of the answer. */
   pending: string;
@@ -88,7 +91,14 @@ export function applyEvent(turn: Turn, event: AssistantEvent, now: number): Turn
     case "model":
       return MODEL_IDS.includes(event.modelId) && (!turn.modelDecision || (turn.modelDecision.status === "selected" && turn.modelDecision.modelId === event.modelId)) ? { ...turn, actualModel: event.modelId } : turn;
     case "project_context":
+    case "conversation_saved":
       return turn;
+    case "implementation_brief": {
+      const parsed = implementationBriefSchema.safeParse(event.brief);
+      return parsed.success ? { ...turn, briefs: [...(turn.briefs ?? []).filter(item => item.id !== event.id), { id: event.id, brief: parsed.data }] } : turn;
+    }
+    case "chat_offer":
+      return typeof event.reason === "string" && event.reason.trim().length > 0 && event.reason.length <= 240 ? { ...turn, chatOffer: event.reason } : turn;
     case "thinking": {
       const settled = settlePending(turn, true);
       const last = settled.steps.at(-1);

@@ -222,6 +222,8 @@ export async function runAssistant({
           ms: Date.now() - started,
         });
         if (outcome.ok && outcome.chart) send({ type: "chart", id: call.id, chart: outcome.chart });
+        if (outcome.ok && outcome.brief) send({ type: "implementation_brief", id: call.id, brief: outcome.brief });
+        if (outcome.ok && outcome.chatOffer) send({ type: "chat_offer", reason: outcome.chatOffer.reason });
         if (outcome.ok && outcome.plan) send({ type: "asset_plan", plan: outcome.plan });
         if (outcome.ok && outcome.project) send({ type: "project_context", project: outcome.project });
         return {

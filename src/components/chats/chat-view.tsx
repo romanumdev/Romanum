@@ -30,28 +30,13 @@ import { WorkspaceList } from "./workspace-list";
 import contextStyles from "./project-context.module.css";
 import { useModelCatalog } from "@/components/models/use-model-catalog";
 
-const attachmentUrl = (id: string) => `/api/chat-attachments/${id}`;
+import { replayChatMessages } from "@/components/assistant/replay";
+export { replayChatMessages } from "@/components/assistant/replay";
 const STARTERS = [
   { label: "Give me ideas", prompt: "Give me a few Roblox game ideas grounded in current data and existing games. Help me choose one before we work through its hooks, game design, roadmap and implementation." },
   { label: "I have an idea", prompt: "I have a Roblox game idea. Ask me about it, then help me work through its hooks and game design before we plan the roadmap and implementation." },
   { label: "I have a game already", prompt: "Help me work out the next steps for my existing Roblox game. Start by asking what I've built so far." },
 ];
-
-/** Redraws saved messages: each question starts a turn, and its answer's recorded events replay onto it. */
-export function replayChatMessages(messages: StoredMessage[]): Turn[] {
-  const turns: Turn[] = [];
-  for (const message of messages) {
-    if (message.role === "user") {
-      const attachments = message.attachments.map((file) => ({ ...file, url: attachmentUrl(file.id) }));
-      turns.push({ ...newTurn(message.id, message.content), attachments });
-    } else if (turns.length) {
-      let turn = turns[turns.length - 1];
-      for (const { t, e } of message.events) turn = applyEvent(turn, e, t);
-      turns[turns.length - 1] = turn.done ? turn : finishTurn(turn, message.events.at(-1)?.t ?? 0);
-    }
-  }
-  return turns;
-}
 
 /** A saved question whose answer never arrived keeps a terminal note, unless a run is still filling it in. */
 function settle(turns: Turn[]): Turn[] {

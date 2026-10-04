@@ -12,6 +12,8 @@ import { historyDatabase, type Database } from "@/lib/history/database";
 import { verificationResponse } from "@/lib/turnstile";
 import { privateAnalyticsTools } from "@/lib/linked-games/assistant-tools";
 import { usesBackgroundChatWorker } from "@/lib/chats/run-dispatch";
+import { ChatError, isChatId, modelConversation, recordEvent, saveAnswer, type TimedEvent } from "@/lib/chats/store";
+import { ChatRunBusyError, submitChatQuestion } from "@/lib/chats/runs";
 
 const MAX_MESSAGES = 80;
 const MAX_USER_CHARS = 4000;
@@ -66,9 +68,18 @@ export async function POST(request: Request) {
   if (raw.length > MAX_BODY_CHARS) return Response.json({ error: "The conversation is too long." }, { status: 413 });
   let history: ApiMessage[] | null = null;
   let modelSelection: ModelSelection;
+  let saveConversation = false;
+  let chatId: string | null = null;
   try {
     const body = JSON.parse(raw);
     history = parseMessages(body);
+    saveConversation = body?.saveConversation === true;
+    if (saveConversation) {
+      if (body.chatId != null && !isChatId(body.chatId)) return Response.json({ error: "Invalid chat." }, { status: 400 });
+      chatId = body.chatId ?? null;
+      // Saved history is authoritative; clients submit just the new question.
+      if (history?.length !== 1) return Response.json({ error: "Send one new question to the saved conversation." }, { status: 400 });
+    }
     modelSelection = requestModelSelection(body?.modelSelection, Object.hasOwn(body ?? {}, "modelSelection"));
     assertSelectionReady(modelSelection);
   } catch (error) {
@@ -76,7 +87,8 @@ export async function POST(request: Request) {
     // Handled below.
   }
   if (!history) return Response.json({ error: "Invalid conversation." }, { status: 400 });
-  const conversation = history;
+  let conversation = history;
+  const question = history[history.length - 1];
 
   // Answers spend credits, so the owner needs some before the model is called.
   let db: Database;
@@ -103,9 +115,21 @@ export async function POST(request: Request) {
   const timeBudget = usesBackgroundChatWorker() ? 25_000 : undefined;
   const analyticsTools = accountId ? privateAnalyticsTools(db, accountId, abort.signal, timeBudget ? { signal: AbortSignal.timeout(timeBudget) } : {}) : undefined;
   let modelRoute;
-  try { modelRoute = resolveAssistantModel(modelSelection!, assistantRequest(conversation, { analyticsTools }), availableCredits); }
+  let saved: Awaited<ReturnType<typeof submitChatQuestion>>["saved"] | null = null;
+  try {
+    if (saveConversation) {
+      const submitted = await submitChatQuestion(db, { ownerId: owner, chatId, question: String(question.content), attachments: [] }, null, persisted => {
+        conversation = modelConversation(persisted.history, { role: "user", content: persisted.question });
+        return resolveAssistantModel(modelSelection!, assistantRequest(conversation, { analyticsTools }), availableCredits);
+      });
+      saved = submitted.saved;
+      modelRoute = submitted.modelRoute!;
+    } else modelRoute = resolveAssistantModel(modelSelection!, assistantRequest(conversation, { analyticsTools }), availableCredits);
+  }
   catch (error) {
     if (error instanceof ModelSelectionError) return Response.json({ error: error.message, decision: error.decision }, { status: error.status, headers: { "cache-control": "no-store" } });
+    if (error instanceof ChatError) return Response.json({ error: error.message }, { status: error.code === "not_found" ? 404 : 400, headers: { "cache-control": "no-store" } });
+    if (error instanceof ChatRunBusyError) return Response.json({ error: error.message }, { status: 409, headers: { "cache-control": "no-store" } });
     return Response.json({ error: "The model selection could not be validated." }, { status: 503 });
   }
   const client = modelRoute.modelDecision?.modelId === "deepseek-flash" ? assistantClient(process.env.DEEPSEEK_API_KEY ?? "") : undefined;
@@ -115,14 +139,29 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const events: TimedEvent[] = [];
+      const started = Date.now();
+      let turn: ApiMessage[] | null = null;
       const send = (event: AssistantEvent) => {
+        if (saved) recordEvent(events, event, Date.now() - started);
+        if (event.type === "done") turn = event.messages;
         if (!closed) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       };
-      const billing = assistantBilling(db, owner, "ask");
+      const billing = saved ? assistantBilling(db, owner, "ask", { conversationId: saved.chatId, runId: saved.questionId }) : assistantBilling(db, owner, "ask");
       try {
         await runAssistant({ client, conversation, send, signal: abort.signal, billing, analyticsTools, analysisTimeBudgetMs: timeBudget, modelRoute });
       } finally {
         if (billing.credits) send({ type: "usage", credits: billing.credits });
+        if (saved) {
+          if (!turn && !events.some(({ e }) => e.type === "error")) send({ type: "error", message: abort.signal.aborted ? "Stopped." : "The response ended before completion." });
+          try {
+            const committed = await saveAnswer(db, { ownerId: owner, chatId: saved.chatId, question: { role: "user", content: saved.question }, turn, events });
+            // This acknowledgement is deliberately after persistence, never a model-controlled action.
+            if (committed && !closed) controller.enqueue(encoder.encode(`${JSON.stringify({ type: "conversation_saved", chatId: saved.chatId })}\n`));
+          } catch {
+            send({ type: "error", message: "The answer could not be saved. Keep this page open to copy it." });
+          }
+        }
         if (!closed) {
           closed = true;
           controller.close();
@@ -136,6 +175,6 @@ export async function POST(request: Request) {
   });
 
   return new Response(stream, {
-    headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" },
+    headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", ...(saved ? { "x-chat-id": saved.chatId } : {}) },
   });
 }
