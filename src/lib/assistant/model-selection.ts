@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 import { env } from "node:process";
 import { quoteAssistantCall } from "./billing.ts";
+import { fundedFinalAnswer } from "./request-budget.ts";
 import { getModel, RATE_CARD_VERSION } from "../models/catalog.ts";
 import { NANO_USD_PER_CREDIT } from "../credits/pricing.ts";
 import { CURRENT_PRICING_POLICY, markedUpPrice, pricingPolicyVersion, quotePricingPolicy, type PricingPolicyVersion } from "../credits/pricing-policy.ts";
@@ -88,8 +89,23 @@ function requestBounds(request: Request): { budget: TokenBudget; images: boolean
 
 /** Resolve Auto exactly once from current server readiness and a trusted, fully framed request. */
 export function resolveAssistantModel(selection: ModelSelection, request: Request, availableCredits: number, environment: Environment = env, at = new Date().toISOString(), reviews: Readonly<ExecutionReviews> = RELEASED_EXECUTION_REVIEWS, boundPolicy: ContractPolicy = PROVIDER_BOUND_POLICY, pricingPolicy: PricingPolicyVersion = CURRENT_PRICING_POLICY): AssistantModelRoute {
+  try { return resolveRequest(selection, request, availableCredits, environment, at, reviews, boundPolicy, pricingPolicy); }
+  catch (error) {
+    // Fund a smaller Flash answer before starting research. Explicit native choices
+    // and unavailable providers retain their existing failure/consent behavior.
+    if (!(error instanceof ModelSelectionError) || !["insufficient_balance", "minimum_hold"].includes(error.decision.reason)
+      || (selection.mode === "explicit" && selection.modelId !== "deepseek-flash")
+      || !readModelReadiness(environment, reviews).some(model => model.modelId === "deepseek-flash" && model.selectable)) throw error;
+    const bounded = fundedFinalAnswer({ ...request, model: "deepseek-flash", stream: true }, availableCredits, pricingPolicy);
+    if (!bounded) throw error;
+    return resolveRequest(selection, bounded, availableCredits, environment, at, reviews, boundPolicy, pricingPolicy, true);
+  }
+}
+
+function resolveRequest(selection: ModelSelection, request: Request, availableCredits: number, environment: Environment, at: string, reviews: Readonly<ExecutionReviews>, boundPolicy: ContractPolicy, pricingPolicy: PricingPolicyVersion, flashOnly = false): AssistantModelRoute {
   const bounds = requestBounds(request);
-  const readiness = readModelReadiness(environment, reviews);
+  // The bounded fallback is reconstructed only by the Flash execution path.
+  const readiness = readModelReadiness(environment, reviews).filter(model => !flashOnly || model.modelId === "deepseek-flash");
   // Routing retains its existing ordering; each native provider supplies its own reviewed ceiling.
   const nativeQuotes = readiness.some(model => model.selectable && model.modelId !== "deepseek-flash");
   const decision = routeModel({ selection, availableCredits, budget: bounds.budget,

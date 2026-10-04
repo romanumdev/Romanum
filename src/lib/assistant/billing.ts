@@ -7,6 +7,8 @@ import { CURRENT_PRICING_POLICY, LEGACY_PRICING_POLICY, PRICING_POLICIES, marked
 import { finishUnreportedUsage, reserveUsage, settleUsage } from "../credits/usage-holds.ts";
 import { isBilledTool } from "../credits/tool-pricing.ts";
 import { finishToolUsage, reserveToolUsage } from "../credits/tool-usage.ts";
+import { getBalance } from "../credits/ledger.ts";
+import { CreditsError } from "../credits/ledger.ts";
 import type { ToolOutcome } from "./tools.ts";
 
 type Request = Pick<OpenAI.Chat.ChatCompletionCreateParams, "model" | "messages" | "tools" | "max_tokens">;
@@ -14,6 +16,8 @@ type ReportedUsage = OpenAI.CompletionUsage & { prompt_cache_hit_tokens?: number
 
 export interface AssistantBilling {
   readonly provider?: AssistantProviderExecution;
+  /** Fresh spendable credits, excluding other calls and uncertain reservations. */
+  availableCredits?(): Promise<number>;
   reserve(maxPriceNanoUsd: number, pricingPolicyVersion?: PricingPolicyVersion): Promise<string>;
   settle(id: string, call: CallUsage): Promise<void>;
   finish(id: string, uncertain: boolean): Promise<void>;
@@ -34,6 +38,7 @@ export function assistantBilling(db: Database, ownerId: string, feature: "ask" |
       return provider.complete(route, request, options);
     } },
     get credits() { return credits; },
+    async availableCredits() { return (await getBalance(db, { ownerId })).available; },
     async reserve(maxPriceNanoUsd, pricingPolicyVersion = CURRENT_PRICING_POLICY) { return (await reserveUsage(db, { ownerId, feature, maxPriceNanoUsd, pricingPolicyVersion })).id; },
     async settle(id, call) { credits += (await settleUsage(db, { ownerId, id, call })).credits; },
     async finish(id, uncertain) { await finishUnreportedUsage(db, { ownerId, id, uncertain }); },
@@ -109,8 +114,19 @@ export async function* meteredStream(
   signal: AbortSignal,
   beforeSend?: () => Promise<void>,
   pricingPolicyVersion: PricingPolicyVersion = CURRENT_PRICING_POLICY,
+  retryReservation?: () => Promise<OpenAI.Chat.ChatCompletionCreateParamsStreaming | null>,
 ): AsyncGenerator<OpenAI.Chat.ChatCompletionChunk> {
-  const id = await billing.reserve(quoteAssistantCall(params, pricingPolicyVersion), pricingPolicyVersion);
+  let id: string;
+  try { id = await billing.reserve(quoteAssistantCall(params, pricingPolicyVersion), pricingPolicyVersion); }
+  catch (error) {
+    // A failed atomic reservation has not dispatched or billed a provider.
+    // Recheck once; never retry an ambiguous transport or settlement failure.
+    if (!(error instanceof CreditsError) || error.code !== "insufficient_balance" || !retryReservation) throw error;
+    const bounded = await retryReservation();
+    if (!bounded) throw error;
+    params = bounded;
+    id = await billing.reserve(quoteAssistantCall(params, pricingPolicyVersion), pricingPolicyVersion);
+  }
   const at = new Date();
   let sent = false;
   let failure: unknown;

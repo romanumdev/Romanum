@@ -1,3 +1,7 @@
+import { InlineAnalyticsTool } from "@/components/analytics/inline-tool";
+import { CompetitorComparison } from "@/components/history/competitor-comparison";
+import { WatchlistsWorkspace } from "@/components/watchlists/watchlists-workspace";
+import { ExperimentsPanel } from "@/components/experiments/experiments-panel";
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -18,12 +22,14 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   return analyticsPageMetadata((await searchParams).view);
 }
 
-export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ starter?: string; view?: string; genre?: string }> }) {
+export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ starter?: string; view?: string; genre?: string; tool?: string; universeIds?: string; days?: string }> }) {
   // Check for the key per request rather than baking the answer in at build time.
   await connection();
   const connected = Boolean(process.env.DEEPSEEK_API_KEY);
-  const { starter, view: requestedView, genre } = await searchParams;
+  const { starter, view: requestedView, genre, tool, universeIds, days } = await searchParams;
   const view: AnalyticsView = ANALYTICS_VIEWS.includes(requestedView as AnalyticsView) ? requestedView as AnalyticsView : "overview";
+  const comparisonIds = (universeIds ?? "").split(",").map(Number).filter(id => Number.isSafeInteger(id) && id > 0).slice(0, 5);
+  const comparisonDays = Number(days ?? 7);
   const initialPrompt = SKILL_CATALOG.find((skill) => skill.id === starter)?.prompt ?? "";
 
   return (
@@ -51,7 +57,20 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         {view === "earnings" && <EarningsCalculator />}
         {(view === "overview" || view === "charts") && <PlayerHistory />}
       </div>
-      <footer className="mt-10 border-t border-line py-5 text-xs text-fg-subtle"><Link href="/privacy" className="inline-flex min-h-10 items-center rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-fg/70">Privacy policy</Link></footer>
+      <section aria-label="Saved games and actions" className="mt-6 space-y-3">
+        <InlineAnalyticsTool id="compare" title="Compare games" initialOpen={tool === "compare"}>
+          <CompetitorComparison initialUniverseIds={comparisonIds} initialDays={Number.isInteger(comparisonDays) && comparisonDays >= 1 && comparisonDays <= 30 ? comparisonDays : 7} />
+        </InlineAnalyticsTool>
+        <InlineAnalyticsTool id="watches" title="Watched games and alerts" initialOpen={tool === "watches"}>
+          <p className="mt-3 text-xs text-fg-muted">Private to your account or this browser. Coverage depends on collection capacity and available observations.</p>
+          <WatchlistsWorkspace />
+        </InlineAnalyticsTool>
+        <InlineAnalyticsTool id="actions" title="Saved actions" initialOpen={tool === "actions"}>
+          <p className="my-3 text-xs text-fg-muted">Review a saved brief, add its release date and check the recorded outcome.</p>
+          <ExperimentsPanel />
+        </InlineAnalyticsTool>
+      </section>
+      <footer className="mt-10 flex flex-wrap gap-x-5 border-t border-line py-5 text-xs text-fg-subtle"><Link href="/privacy" className="inline-flex min-h-10 items-center rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-fg/70">Privacy policy</Link><Link href="/terms" className="inline-flex min-h-10 items-center rounded-sm hover:text-fg focus-visible:outline-2 focus-visible:outline-fg/70">Terms of service</Link></footer>
     </>
   );
 }

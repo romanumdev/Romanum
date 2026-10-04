@@ -31,9 +31,9 @@ function ExperimentEditor({ experiment, onSaved, onDeleted, reload }: { experime
     try {
       const response = await fetch(`/api/experiments/${experiment.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...taskMetadata(value), revision: experiment.revision }) });
       const data = await response.json();
-      if (!response.ok) { setConflict(response.status === 409); throw new Error(data.error ?? "Could not save this task."); }
-      onSaved(data.experiment); setResult(null); setMessage("Task updated.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save this task."); }
+      if (!response.ok) { setConflict(response.status === 409); throw new Error(data.error ?? "Could not save this action."); }
+      onSaved(data.experiment); setResult(null); setMessage("Action updated.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save this action."); }
     finally { setBusy(false); }
   }
   async function compare() {
@@ -51,16 +51,16 @@ function ExperimentEditor({ experiment, onSaved, onDeleted, reload }: { experime
     try {
       const response = await fetch(`/api/experiments/${experiment.id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: experiment.revision }) });
       const data = await response.json();
-      if (!response.ok) { setConflict(response.status === 409); throw new Error(data.error ?? "Could not delete this task."); }
+      if (!response.ok) { setConflict(response.status === 409); throw new Error(data.error ?? "Could not remove this action."); }
       onDeleted();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not delete this task."); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not remove this action."); }
     finally { setBusy(false); }
   }
-  return <article className="rounded-xl border border-line bg-surface p-4">
-    <h2 className="font-semibold text-fg">{experiment.title}</h2>
+  return <details className="rounded-xl border border-line bg-surface p-4">
+    <summary className="cursor-pointer text-sm font-medium text-fg">{experiment.title}<span className="ml-2 text-xs font-normal text-fg-muted">{experiment.status}{experiment.releaseDate ? ` · Released ${experiment.releaseDate}` : ""}</span></summary>
     <form onSubmit={save} className="mt-3 space-y-3">
       <TaskFields value={value} onChange={setValue} />
-      <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy} className={buttonClass}>Save changes</button><button type="button" disabled={busy} className={buttonClass} onClick={compare}>Check saved before/after results</button><button type="button" disabled={busy} className={buttonClass} onClick={remove}>Delete task</button>{conflict && <button type="button" onClick={reload} className={buttonClass}>Reload latest tasks</button>}</div>
+      <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy} className={buttonClass}>Save changes</button><button type="button" disabled={busy} className={buttonClass} onClick={compare}>Check outcome</button><button type="button" disabled={busy} className={buttonClass} onClick={remove}>Remove action</button>{conflict && <button type="button" onClick={reload} className={buttonClass}>Reload saved actions</button>}</div>
     </form>
     <p role="status" aria-live="polite" className="mt-2 text-xs text-fg-muted">{message}</p>
     {result && <Results result={result} />}
@@ -69,10 +69,10 @@ function ExperimentEditor({ experiment, onSaved, onDeleted, reload }: { experime
       {experiment.evidence.sources.length > 0 && <ul className="mt-2 space-y-1">{experiment.evidence.sources.map((source, index) => <li key={index}>{source.url ? <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-fg underline">{source.label}</a> : source.label}{source.playing !== undefined ? ` · ${number(source.playing)} players observed` : ""}{source.observedAt ? ` · ${source.observedAt}` : ""}</li>)}</ul>}
       <ImplementationBriefCard brief={experiment.brief} trackable={false} />
     </details>
-  </article>;
+  </details>;
 }
 
-export function ExperimentsPanel() {
+export function ExperimentsPanel({ universeId }: { universeId?: number }) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [message, setMessage] = useState("Loading tracked tasks…");
   const [version, setVersion] = useState(0);
@@ -80,11 +80,12 @@ export function ExperimentsPanel() {
     const controller = new AbortController();
     fetch("/api/experiments", { signal: controller.signal }).then(async response => {
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Tracked tasks unavailable.");
-      setExperiments(data.experiments); setMessage(data.experiments.length ? "" : "Save a prepared implementation brief as a tracked task to get started.");
-    }).catch(error => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Tracked tasks unavailable."); });
+      if (!response.ok) throw new Error(data.error ?? "Saved actions unavailable.");
+      setExperiments(data.experiments); setMessage(data.experiments.length ? "" : "Save an action from an implementation brief to track its release and outcome.");
+    }).catch(error => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Saved actions unavailable."); });
     return () => controller.abort();
   }, [version]);
+  const visible = experiments.filter(experiment => universeId === undefined || experiment.universeId === universeId);
   const reload = () => setVersion(value => value + 1);
-  return <div className="space-y-4"><p role="status" className="text-sm text-fg-muted">{message}</p>{experiments.map(experiment => <ExperimentEditor key={`${experiment.id}:${version}`} experiment={experiment} reload={reload} onDeleted={() => { setExperiments(current => current.filter(item => item.id !== experiment.id)); setMessage("Task deleted."); }} onSaved={saved => setExperiments(current => current.map(item => item.id === saved.id ? saved : item))} />)}</div>;
+  return <div className="space-y-4"><p role="status" className="text-sm text-fg-muted">{message}</p>{!message && !visible.length && <p className="text-sm text-fg-muted">No saved actions for this game yet.</p>}{visible.map(experiment => <ExperimentEditor key={`${experiment.id}:${version}`} experiment={experiment} reload={reload} onDeleted={() => { setExperiments(current => current.filter(item => item.id !== experiment.id)); setMessage("Action deleted."); }} onSaved={saved => setExperiments(current => current.map(item => item.id === saved.id ? saved : item))} />)}</div>;
 }

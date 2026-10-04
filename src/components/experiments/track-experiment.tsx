@@ -15,17 +15,17 @@ export function TrackExperiment({ brief }: { brief: ImplementationBrief }) {
     try {
       const response = await fetch("/api/experiments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...taskMetadata(value), brief }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Could not save this task.");
-      setSaved(true); setMessage("Task saved privately for this browser or account.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save this task."); }
+      if (!response.ok) throw new Error(data.error ?? "Could not save this action.");
+      setSaved(true); setMessage("Action saved privately for this browser or account.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save this action."); }
     finally { setBusy(false); }
   }
   return <details className="mt-2 border-t border-line pt-2 text-xs text-fg-muted">
-    <summary className="cursor-pointer rounded-sm text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg/70">Track this development task</summary>
-    {saved ? <Link href="/analytics/experiments" className="mt-2 inline-block text-fg underline">View tracked tasks</Link> : <form onSubmit={save} className="mt-3 space-y-3">
+    <summary className="cursor-pointer rounded-sm text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fg/70">Save this action</summary>
+    {saved ? <Link href="/analytics?tool=actions#actions" className="mt-2 inline-block text-fg underline">View saved actions</Link> : <form onSubmit={save} className="mt-3 space-y-3">
       <TaskFields value={value} onChange={setValue} />
       <p>Private brief and evidence snapshot, saved to your account or this browser&apos;s guest identity.</p>
-      <button className={buttonClass} type="submit" disabled={busy}>{busy ? "Saving…" : "Save tracked task"}</button>
+      <button className={buttonClass} type="submit" disabled={busy}>{busy ? "Saving…" : "Save action"}</button>
     </form>}
     <p role="status" aria-live="polite" className="mt-2">{message}</p>
   </details>;

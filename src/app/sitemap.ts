@@ -7,5 +7,6 @@ export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Existing persisted public games only. Never enroll games, generate AI or read owner tables.
-  return loadPublicSitemap(() => historyService.games());
+  const entries = await loadPublicSitemap(() => historyService.games());
+  return [...entries, { url: "https://romanum.dev/terms" }];
 }

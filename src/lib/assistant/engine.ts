@@ -15,6 +15,8 @@ import { withoutPrivateToolHistory } from "../linked-games/assistant-history.ts"
 import { AdReportAccessError } from "../ad-reports/assistant-tools.ts";
 import { AD_REPORT_PROMPT } from "../ad-reports/assistant-prompt.ts";
 import { ModelSelectionError, revalidateAssistantModel, type AssistantModelRoute } from "./model-selection.ts";
+import { FINAL_ANSWER_INSTRUCTION, fundedFinalAnswer, requestFitsCredits } from "./request-budget.ts";
+import { isBilledTool } from "../credits/tool-pricing.ts";
 
 // The assistant's model loop, shared by Ask Romanum (/api/assistant) and saved chats (/api/chats).
 
@@ -40,7 +42,7 @@ function describeError(error: unknown): string {
   if (error instanceof ModelSelectionError) return error.message;
   if (error instanceof AdReportAccessError) return error.message;
   if (error instanceof OpenCloudError) return error.message;
-  if (error instanceof CreditsError && error.code === "insufficient_balance") return "Not enough credits for the next step.";
+  if (error instanceof CreditsError && error.code === "insufficient_balance") return "Not enough available credits to finish this answer with the current context.";
   // Provider setup and billing diagnostics belong in server logs and README.md.
   if (error instanceof OpenAI.AuthenticationError || (error instanceof OpenAI.APIError && error.status === 402)) return "Assistant unavailable. Try again later.";
   if (error instanceof OpenAI.RateLimitError) return "Assistant busy. Try again shortly.";
@@ -55,7 +57,7 @@ export function assistantRequest(conversation: ApiMessage[], {
   return {
     model: ASSISTANT_MODEL,
     messages: [{ role: "system", content: systemPrompt + (analyticsTools ? PRIVATE_ANALYTICS_PROMPT : "") + (hasAds ? AD_REPORT_PROMPT : "") }, ...(preparedHistory ? conversation : withoutPrivateToolHistory(conversation)),
-      ...(finalAnalysisStep ? [{ role: "system" as const, content: "Finish the answer now using the evidence already retrieved. State any missing or unchecked areas. No more tools are available this turn." }] : [])],
+      ...(finalAnalysisStep ? [{ role: "system" as const, content: FINAL_ANSWER_INSTRUCTION }] : [])],
     ...(!finalAnalysisStep ? { tools: [...TOOLS, ...(projectTools?.definitions ?? []), ...(analyticsTools?.definitions ?? [])] } : {}),
     max_tokens: MAX_TOKENS, stream: true, stream_options: { include_usage: true },
   };
@@ -103,6 +105,7 @@ export async function runAssistant({
   try {
     if (modelRoute) send({ type: "model_selection", modelSelection: modelRoute.modelSelection, decision: modelRoute.modelDecision, resolvedAt: modelRoute.modelResolvedAt, ...(modelRoute.legacy ? { legacy: true } : {}) });
     let modelReported = false;
+    let finishAfterResearch = false;
     const began = Date.now();
     const hasAds = () => !!projectTools?.definitions.some(tool => tool.function.name === "list_ad_reports");
     const maxSteps = analyticsTools || projectTools?.checkAccess ? 12 : MAX_STEPS;
@@ -113,13 +116,23 @@ export async function runAssistant({
     };
     for (let step = 0; step < maxSteps; step++) {
       await beforeProvider();
-      const finalAnalysisStep = (!!analyticsTools || hasAds()) && (step === maxSteps - 1 || (analysisTimeBudgetMs !== undefined && Date.now() - began >= analysisTimeBudgetMs));
+      let finalAnalysisStep = finishAfterResearch || step === maxSteps - 1 || ((!!analyticsTools || hasAds()) && analysisTimeBudgetMs !== undefined && Date.now() - began >= analysisTimeBudgetMs);
       const selectedModel = modelRoute?.modelDecision?.modelId ?? ASSISTANT_MODEL;
       const native = selectedModel !== ASSISTANT_MODEL;
       // Native continuation binds instructions and tool schemas throughout a turn.
-      const params = assistantRequest([...modelHistory, ...turn], { systemPrompt, projectTools, analyticsTools, finalAnalysisStep: !native && finalAnalysisStep, preparedHistory: true });
+      let params = assistantRequest([...modelHistory, ...turn], { systemPrompt, projectTools, analyticsTools, finalAnalysisStep: !native && finalAnalysisStep, preparedHistory: true });
       if (native && finalAnalysisStep) params.messages.push({ role: "user", content: "Finish the answer now using the evidence already retrieved. State any missing or unchecked areas. Additional tools will not be executed this turn." });
       params.model = selectedModel;
+      const pricingPolicy = modelRoute?.modelDecision ? quotePricingPolicy(modelRoute.modelDecision.quote) : CURRENT_PRICING_POLICY;
+      if (!native && billing.availableCredits) {
+        const available = await billing.availableCredits();
+        if (!requestFitsCredits(params, available, pricingPolicy)) {
+          const bounded = fundedFinalAnswer(params, available, pricingPolicy);
+          if (!bounded) throw new CreditsError("insufficient_balance", "Available credits cannot fund a bounded final response.");
+          params = bounded;
+          finalAnalysisStep = true;
+        }
+      }
       if (modelRoute && !native) revalidateAssistantModel(modelRoute, params);
 
       let content = "";
@@ -143,10 +156,16 @@ export async function runAssistant({
           billing,
           signal,
           async () => { await beforeProvider(); if (modelRoute) revalidateAssistantModel(modelRoute, params); },
-          modelRoute?.modelDecision ? quotePricingPolicy(modelRoute.modelDecision.quote) : CURRENT_PRICING_POLICY,
+          pricingPolicy,
+          billing.availableCredits ? async () => {
+            const bounded = fundedFinalAnswer(params, await billing.availableCredits!(), pricingPolicy);
+            if (bounded) { params = bounded; finalAnalysisStep = true; }
+            return bounded;
+          } : undefined,
         );
 
         for await (const chunk of completion) {
+          if (chunk.choices[0]?.finish_reason === "length") truncated = true;
           if (modelRoute && !modelReported) { modelReported = true; send({ type: "model", modelId: ASSISTANT_MODEL }); }
           const delta = chunk.choices[0]?.delta as DeepSeekDelta | undefined;
           if (!delta) continue;
@@ -167,7 +186,8 @@ export async function runAssistant({
         }
       }
 
-      const toolCalls = calls.filter((call) => call && call.id && call.name);
+      if (finalAnalysisStep && calls.length) truncated = true;
+      const toolCalls = finalAnalysisStep || truncated ? [] : calls.filter((call) => call && call.id && call.name);
       // DeepSeek requires reasoning_content on every assistant message it produced when tools are in use.
       turn.push({
         role: "assistant",
@@ -188,6 +208,21 @@ export async function runAssistant({
         if (truncated) send({ type: "error", message: "The answer is incomplete because this turn reached its limit." });
         send({ type: "done", messages: turn });
         return;
+      }
+
+      if (!native && billing.availableCredits) {
+        // Paid lookups need temporary one-credit holds. Avoid starting them when
+        // even a short answer on the current evidence cannot fit alongside those
+        // holds. Actual result growth is requoted before the next provider call.
+        const billed = toolCalls.filter(call => isBilledTool(call.name) && !projectTools?.definitions.some(tool => tool.function.name === call.name)).length;
+        const declined = toolCalls.map(call => ({ role: "tool" as const, tool_call_id: call.id,
+          content: JSON.stringify({ error: "This lookup was not run: the available credit budget is being used to finish the answer." }) }));
+        const next = assistantRequest([...modelHistory, ...turn, ...declined], { systemPrompt, projectTools, analyticsTools, finalAnalysisStep: true, preparedHistory: true });
+        if (!fundedFinalAnswer(next, Math.max(0, await billing.availableCredits() - billed), pricingPolicy)) {
+          turn.push(...declined);
+          finishAfterResearch = true;
+          continue;
+        }
       }
 
       const execute = async (call: (typeof toolCalls)[number]) => {

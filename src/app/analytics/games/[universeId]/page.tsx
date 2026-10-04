@@ -1,3 +1,4 @@
+import { InlineAnalyticsTool } from "@/components/analytics/inline-tool";
 import { cache } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -16,10 +17,13 @@ import { gameAnalysisPrompt } from "@/lib/analytics/game-analysis";
 import { getGameIcons } from "@/lib/roblox-icons";
 import { GameEarningsPanel } from "@/components/analytics/revenue";
 import { publicGameMetadata, utcObservationTime } from "@/lib/public-discovery";
+import { CompetitorComparison } from "@/components/history/competitor-comparison";
+import { WatchlistsWorkspace } from "@/components/watchlists/watchlists-workspace";
+import { ExperimentsPanel } from "@/components/experiments/experiments-panel";
 import { SaveWatchlistButton } from "@/components/watchlists/save-watchlist-button";
 
 export const dynamic = "force-dynamic";
-type Props = { params: Promise<{ universeId: string }> };
+type Props = { params: Promise<{ universeId: string }>; searchParams: Promise<{ tool?: string }> };
 const getGame = cache(loadPublicGame);
 
 function validId(id: string) {
@@ -48,9 +52,10 @@ async function ownAnalytics(universeId: number) {
   return database && linked ? { game: linked, metrics: await readGameMetrics(database, account.id, linked.id) } : null;
 }
 
-export default async function GamePage({ params }: Props) {
+export default async function GamePage({ params, searchParams }: Props) {
   const { universeId } = await params;
   validId(universeId);
+  const { tool } = await searchParams;
   const [{ game, fetchedAt, source }, own] = await Promise.all([getGame(universeId), ownAnalytics(Number(universeId))]);
   if (!game) notFound();
   const iconUrl = (await getGameIcons([game.universeId], "512x512")).get(game.universeId) ?? game.iconUrl;
@@ -75,7 +80,7 @@ export default async function GamePage({ params }: Props) {
           <p className="mt-4 text-xs text-fg-subtle break-words">{game.genre ?? "Genre unavailable"}</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <a href={`https://www.roblox.com/games/${game.rootPlaceId}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-line px-3 text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-fg-muted">View on Roblox <ArrowUpRight className="size-4" aria-hidden="true" /></a>
-            <Link href={`/analytics/compare?universeIds=${game.universeId}&days=7`} prefetch={false} className="inline-flex min-h-11 items-center rounded-lg border border-line px-3 text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-fg-muted">Compare games</Link>
+            <Link href={`/analytics/games/${game.universeId}?tool=compare#compare`} prefetch={false} className="inline-flex min-h-11 items-center rounded-lg border border-line px-3 text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-fg-muted">Compare games</Link>
             <SaveWatchlistButton universeId={game.universeId} name={game.name} />
             {own && <Link href={`/profile/settings/games#game-${own.game.id}`} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-line px-3 text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-fg-muted"><Settings className="size-4" aria-hidden="true" />Settings</Link>}
           </div>
@@ -107,8 +112,17 @@ export default async function GamePage({ params }: Props) {
               {stats.map((stat) => <div key={stat.label} className="min-w-0 rounded-xl border border-line bg-surface px-4 py-5"><dt className="text-xs text-fg-muted">{stat.label}</dt><dd className="mt-2 text-2xl font-semibold tabular-nums" title={formatValue(stat.value, stat.format === "percent" ? "percent" : "full")}>{formatValue(stat.value, stat.format)}</dd></div>)}
             </dl>
             <p className="mt-3 text-xs leading-5 text-fg-muted"><a href={`${source}?universeIds=${game.universeId}`} className="text-fg underline underline-offset-2">Roblox statistics source</a> · Current players are concurrent; visits and favourites are cumulative. <Link href="/analytics/data" className="text-fg underline underline-offset-2">Metric definitions and coverage</Link></p>
+            <InlineAnalyticsTool id="compare" title="Compare with other games" initialOpen={tool === "compare"} className="mt-5">
+              <CompetitorComparison initialUniverseIds={[game.universeId]} />
+            </InlineAnalyticsTool>
             <PlayerHistory key={game.universeId} game={{ universeId: game.universeId, rootPlaceId: game.rootPlaceId, name: game.name, iconUrl: iconUrl ?? null }} />
           </section>
+          <InlineAnalyticsTool id="game-watch" title="Watch settings and alerts" initialOpen={tool === "watches"}>
+            <WatchlistsWorkspace universeId={game.universeId} />
+          </InlineAnalyticsTool>
+          <InlineAnalyticsTool id="actions" title="Saved actions for this game" initialOpen={tool === "actions"}>
+            <div className="mt-4"><ExperimentsPanel universeId={game.universeId} /></div>
+          </InlineAnalyticsTool>
           <details className="rounded-xl border border-line p-5">
             <summary className="cursor-pointer text-sm text-fg-muted hover:text-fg">Explore earnings estimates</summary>
             <GameEarningsPanel game={game} />
