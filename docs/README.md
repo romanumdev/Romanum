@@ -4,6 +4,7 @@
 - [MCP setup](mcp.md): connect an external agent, available tools and server configuration.
 - [Private ad reports](ad-reports.md): validated aggregate/daily imports, creative evidence, owner learning and consent.
 - [Analytics workflows](analytics-workflows.md): comparisons, saved watches and tracked development experiments.
+- [Private game analytics authorization](roblox-analytics-oauth.md): Roblox permissions, connection controls and the live review checklist.
 - [Portable skills](https://github.com/romanumdev/romanum-skills): research and game-development guides in their own repository.
 - [Licence](../LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md).
 

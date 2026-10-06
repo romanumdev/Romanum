@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { MODEL_CATALOG, RATE_CARD_CHECKED_AT, RATE_CARD_VERSION, getModel } from "../src/lib/models/catalog.ts";
 import { MODEL_IDS } from "../src/lib/models/types.ts";
-import { publicModels, readModelReadiness, RELEASED_EXECUTION_REVIEWS } from "../src/lib/models/readiness.ts";
+import { hasReadyModel, publicModels, readModelReadiness, RELEASED_EXECUTION_REVIEWS } from "../src/lib/models/readiness.ts";
 
 const environment = () => ({ DEEPSEEK_API_KEY: "fixture-deepseek", OPENAI_API_KEY: "fixture-openai", ANTHROPIC_API_KEY: "fixture-anthropic" });
 test("catalog IDs, standard prices and provenance are explicit and immutable", () => {
@@ -50,6 +50,20 @@ test("server-injected reviews enable only their exact configured model", () => {
   assert.deepEqual(ready.filter(model => model.selectable).map(model => model.modelId), ["gpt-6.1-sol"]);
   assert.equal(readModelReadiness({}, reviews).find(model => model.modelId === "gpt-6.1-sol").reason, "missing_key");
   assert.equal(readModelReadiness(environment()).find(model => model.modelId === "gpt-6.1-sol").selectable, true);
+});
+
+test("composer readiness accepts each reviewed provider but rejects missing, disabled or unsupported adapters", () => {
+  assert.equal(hasReadyModel({}), false);
+  assert.equal(hasReadyModel({ DEEPSEEK_API_KEY: " ", OPENAI_API_KEY: "\t", ANTHROPIC_API_KEY: "" }), false);
+  for (const key of ["DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]) {
+    const fixture = { [key]: "fixture-only" };
+    assert.equal(hasReadyModel(fixture), true, key);
+    delete fixture[key];
+    assert.equal(hasReadyModel(fixture), false, `${key} removed`);
+  }
+  assert.equal(hasReadyModel(environment(), {}), false);
+  assert.equal(hasReadyModel(environment(), { "gpt-6.1-sol": { adapterSupported: true, executionEnabled: false } }), false);
+  assert.equal(hasReadyModel(environment(), { "gpt-6.1-sol": { adapterSupported: false, executionEnabled: true } }), false);
 });
 
 test("key removal is observed on the next invocation; public output contains only catalog and safe status", () => {

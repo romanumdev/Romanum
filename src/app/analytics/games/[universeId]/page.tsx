@@ -13,6 +13,7 @@ import { readAccount } from "@/lib/accounts/session";
 import { historyDatabase } from "@/lib/history/database";
 import { linkedGameForUniverse, readGameMetrics } from "@/lib/linked-games/store";
 import { Assistant } from "@/components/assistant/assistant";
+import { hasReadyModel } from "@/lib/models/readiness";
 import { gameAnalysisPrompt } from "@/lib/analytics/game-analysis";
 import { getGameIcons } from "@/lib/roblox-icons";
 import { GameEarningsPanel } from "@/components/analytics/revenue";
@@ -96,7 +97,7 @@ export default async function GamePage({ params, searchParams }: Props) {
           <section id="game-analysis" aria-labelledby="game-analysis-heading" className="scroll-mt-8 rounded-2xl border border-line p-5 sm:p-6">
             <h2 id="game-analysis-heading" className="mt-2 text-lg font-semibold">What should you try next?</h2>
             <p className="mt-3 mb-5 max-w-2xl text-sm leading-6 text-fg-muted">Review {privateAnalysis ? "your authorized private metrics and public activity" : "this game's public activity"} and choose prioritized tests with clear success measures.</p>
-            <Assistant connected={Boolean(process.env.DEEPSEEK_API_KEY)} analysisPrompt={prompt} />
+            <Assistant connected={hasReadyModel()} analysisPrompt={prompt} />
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-fg-subtle">
               <Link href={`/chats?prompt=${encodeURIComponent(prompt)}`} className="inline-flex min-h-9 items-center text-fg-muted hover:text-fg hover:underline">Open a saved chat →</Link>
             </div>
