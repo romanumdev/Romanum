@@ -32,6 +32,51 @@ flow must be reviewed before submitting the app. The Terms page remains a
 separate working draft while operator wording is unresolved. Do not enable the
 feature merely because local mock tests pass.
 
+## App review submission
+
+Open the app under [Creator Dashboard credentials](https://create.roblox.com/dashboard/credentials?activeTab=OAuthTab).
+Check whether the analytics permission is absent, pending review or approved;
+the existence of a working sign-in app does not establish analytics approval.
+An app with a pending public review cannot be edited until that review finishes.
+
+Use this description and scope justification after checking that they match the
+configured app and the demonstrated release:
+
+> Romanum helps Roblox developers understand their own experience analytics.
+> Developers optionally connect a specific experience through Roblox, view
+> aggregate metrics and separately choose whether to let an AI analyse them.
+> Public Roblox analytics remain available without a private game connection.
+
+> `openid` and `profile` identify the account during sign-in and ensure that a
+> game connection returns to the same account. `universe.analytics:read` lets
+> Romanum request aggregate engagement, retention, monetization, acquisition,
+> funnel and client/server performance metrics, their dimension values and query
+> operation results for explicitly authorised universes. The integration does
+> not request write access, individual player identities or advertising access.
+
+The registered production callback is `https://romanum.dev/auth/roblox/callback`.
+Use `https://romanum.dev/privacy` for the published privacy policy. A final Terms
+page still needs publication; do not submit a placeholder or a private review
+draft as the public Terms URL. Roblox's App Terms require wording covering its
+relationship to the app, responsibility and support, user compliance with
+Roblox's terms, and release of claims against Roblox. Finalise operator wording
+and review those clauses before publication.
+
+The public-app review also needs a public demonstration video of at most one
+minute. Record the actual flow, starting signed out: sign in, open game settings,
+start the optional game connection, show the complete Roblox consent screen and
+return to the connected game in Romanum. Show collection and AI analysis as
+separate choices. Use an authorised test experience and keep credentials out of
+the recording. Use a permitted private test configuration to demonstrate the
+flow before public approval; do not enable an unapproved app for general users.
+The registered callback, screenshots, wording and requested scopes must match
+the demonstrated app.
+
+Before public activation, verify app approval, the final policy URLs, the
+production migration and the registered callback. Setting an environment flag
+does not grant Roblox permission. Reauthorisation is required for each user's
+new scope; existing sign-in sessions do not gain access automatically.
+
 After those prerequisites are approved and verified, enabling the flag exposes
 the optional **Connect through Roblox** action in game settings. Users enter a
 universe ID, authorize it on Roblox and return under the same Romanum account.

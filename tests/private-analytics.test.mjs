@@ -116,7 +116,7 @@ test("AI analysis is a separate default-off owner choice, versioned and audited 
   assert.equal(outcome.ok, true);
   assert.equal(requests, 1);
   const choices = (await f.db.query("SELECT enabled,notice FROM linked_game_consents WHERE setting='ai_analysis'")).rows;
-  assert.deepEqual(choices, [{ enabled: true, notice: "2026-09-30" }]);
+  assert.deepEqual(choices, [{ enabled: true, notice: "2026-10-07" }]);
 });
 
 test("account-scoped tools refuse guessed, other-owner and disconnected games, disabled collection and expired keys", async t => {
