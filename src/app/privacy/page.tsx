@@ -9,7 +9,7 @@ const sections = [["collection", "What we collect"], ["ai", "AI requests"], ["ad
 export default function PrivacyPage() {
   return <article className="mx-auto max-w-3xl pb-12">
     <header>
-      <p className="text-sm text-fg-muted">Updated 4 October 2026</p>
+      <p className="text-sm text-fg-muted">Updated 7 October 2026</p>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight">Privacy policy</h1>
       <p className="mt-5 leading-relaxed text-fg-muted">Romanum is a Roblox development platform based in Australia. This policy covers the Romanum website and its services. Contact us at <a href="mailto:help@romanum.dev" className={LINK}>help@romanum.dev</a>.</p>
     </header>
@@ -41,7 +41,7 @@ export default function PrivacyPage() {
         <p>Project reference images stay in your private library. Choosing one in a chat copies it into that message; sending the message sends that copy to the selected model provider. Removing the library image does not remove copies already saved in chats.</p>
         <p>Private game analytics reach the assistant only when you enable <strong className="text-fg">AI analysis</strong> for that linked game. When you ask about it, relevant aggregate metrics and breakdowns can be retrieved using the game&apos;s saved authorization and sent to the selected model provider. These can include funnels, device performance, retention, engagement, monetization, acquisition, economy and custom events. OAuth access and refresh tokens, and retained legacy API keys, are never sent to the model. If you paste private metrics into a message, that content is sent with your request regardless of the game&apos;s switches.</p>
         <p>Private results and answers are retained in saved chats. Turning AI analysis off stops new private analytics reads; it does not remove earlier answers or recall provider requests. Earlier answers can still be included in later conversation history. Previous private tool payloads are withheld from subsequent turns; a new lookup needs current permission. Delete the chat to remove its saved copy.</p>
-        <p>DeepSeek handles requests under its applicable terms. Romanum has not established a zero-retention or no-training arrangement with DeepSeek, so we do not make either promise. Avoid sending passwords, API keys, sensitive personal information or personal information about children in chats.</p>
+        <p>The selected provider handles AI requests under its applicable terms. Retention and data-use terms differ between providers; Romanum does not promise zero retention. Romanum has not established a no-training arrangement with DeepSeek. Avoid sending passwords, API keys, sensitive personal information or personal information about children in chats.</p>
       </section>
       <section id="ads">
         <h2>Imported ad reports</h2>
@@ -65,6 +65,8 @@ export default function PrivacyPage() {
           <li><a className={LINK} href="https://www.netlify.com/privacy/">Netlify</a> hosts the website and server functions, processing requests and application data.</li>
           <li><a className={LINK} href="https://www.salesforce.com/company/privacy/">Heroku / Salesforce</a> hosts our PostgreSQL database. The current database is in the United States.</li>
           <li><a className={LINK} href="https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html">DeepSeek</a> processes AI requests. DeepSeek is based in China and describes processing and storage there; AI content may therefore be processed in China.</li>
+          <li><a className={LINK} href="https://developers.openai.com/api/docs/guides/your-data">OpenAI</a> processes AI requests when you select an OpenAI model. Its API data controls describe retention and how request data is used.</li>
+          <li><a className={LINK} href="https://www.anthropic.com/legal/commercial-terms">Anthropic</a> processes AI requests when you select a Claude model, under its commercial terms.</li>
           <li><a className={LINK} href="https://www.cloudflare.com/turnstile-privacy-policy/">Cloudflare Turnstile</a> checks for automated abuse. It processes information such as IP address, browser signals and the site being visited, including for improving bot detection.</li>
           <li><a className={LINK} href="https://en.help.roblox.com/hc/en-us/articles/115004630823-Roblox-Privacy-and-Cookie-Policy">Roblox</a> provides sign-in, experience information, authorised analytics and remotely loaded Roblox images.</li>
         </ul>
@@ -78,7 +80,7 @@ export default function PrivacyPage() {
       </section>
       <section id="retention">
         <h2>Storage and deletion</h2>
-        <p>Saved account content stays in the application database until you delete it or your account. There is no automatic expiry for inactive accounts or guest content at present. Access to private records is checked against the account or guest identifier; game authorization tokens and retained legacy API keys are encrypted separately.</p>
+        <p>Saved account content stays in the application database until you delete it or your account. There is no automatic expiry for inactive accounts or guest content at present. Access to private records is checked against the account or guest identifier; game authorization tokens and retained legacy API keys are stored as separate encrypted records.</p>
         <p>Deleting your account removes its profile, saved chats and images, projects and plans, watches and alerts, development experiments, linked game authorization credentials, private metrics and consent history from the active database. All its sign-in sessions are revoked. A request already sent to an AI provider cannot be recalled by deleting the account.</p>
           <p>We retain credit, model and tool-usage records for accounting, resolving outstanding usage and preventing abuse. They include an internal owner identifier and, for sign-up grants and weekly refill records, your Roblox user ID. We also retain a closure marker containing internal account identifiers and the deletion date so stale requests cannot recreate your content. These records do not contain your chat text or images.</p>
         <p>There is currently no automatic expiry for these retained records. You can ask us to review their continued retention. Provider logs, provider-held AI requests and backup copies follow separate retention processes; account deletion does not immediately erase them. We do not promise a fixed deletion deadline for those copies.</p>

@@ -146,7 +146,7 @@ function GameCard({ game, settings, onChange, onRemove, onRelink }: { game: Link
         />
         <Switch
           label="AI analysis"
-          description="Let Ask Romanum and Chats read this game's private analytics, including funnels, performance and revenue. Results go to DeepSeek and remain in saved chats. Turning this off stops new reads; it doesn't erase earlier answers."
+          description="Let Ask Romanum and Chats read this game's private analytics, including funnels, performance and revenue. Results go to your selected model provider (DeepSeek, OpenAI or Anthropic) and remain in saved chats. Turning this off stops new reads; it doesn't erase earlier answers."
           checked={game.aiAnalysis}
           disabled={busy || (!game.aiAnalysis && game.status !== "active")}
           onChange={(value) => toggle("aiAnalysis", value)}

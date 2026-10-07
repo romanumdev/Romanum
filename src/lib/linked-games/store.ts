@@ -8,7 +8,7 @@ import { OpenCloudError, type AnalyticsCredential } from "./open-cloud.ts";
 // are sealed on the server; their plaintext never enters a game response.
 
 /** Version of the short notices beside the collection and sharing switches, recorded with each choice. */
-export const CONSENT_NOTICE = "2026-09-30";
+export const CONSENT_NOTICE = "2026-10-07";
 
 export type LinkedGameStatus = "active" | "key_rejected" | "disconnected";
 

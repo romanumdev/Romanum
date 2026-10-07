@@ -229,7 +229,7 @@ test("collection off stops syncing; disconnecting deletes the key and keeps the 
   assert.equal((await db.query("SELECT count(*)::int AS count FROM linked_game_metrics")).rows[0].count, 0);
   assert.deepEqual(
     (await db.query("SELECT setting, enabled, notice FROM linked_game_consents ORDER BY id")).rows,
-    [{ setting: "collect", enabled: true, notice: "2026-09-30" }, { setting: "collect", enabled: false, notice: "2026-09-30" }],
+    [{ setting: "collect", enabled: true, notice: "2026-10-07" }, { setting: "collect", enabled: false, notice: "2026-10-07" }],
   );
 });
 
