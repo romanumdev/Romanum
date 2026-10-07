@@ -31,6 +31,16 @@ Confirm the legal operator identity and any required public identification, the 
 
 Australian reference: OAIC guidance on [privacy policies](https://www.oaic.gov.au/privacy/australian-privacy-principles/australian-privacy-principles-guidelines/chapter-1-app-1-open-and-transparent-management-of-personal-information), [collection notices](https://www.oaic.gov.au/privacy/australian-privacy-principles/australian-privacy-principles-guidelines/chapter-5-app-5-notification-of-the-collection-of-personal-information) and [small-business coverage](https://www.oaic.gov.au/privacy/privacy-guidance-for-organisations-and-government-agencies/organisations/small-business). Applicability must be assessed rather than inferred from the platform's size.
 
+### AI provider checks for the analytics release
+
+Roblox's [app data-use policy](https://en.help.roblox.com/hc/en-us/articles/37924211313044-Creator-Third-Party-App-Policy) prohibits using user data to train AI models. A user's AI-analysis switch permits the requested inference; it is not permission for model training.
+
+- **OpenAI:** its [API data controls](https://developers.openai.com/api/docs/guides/your-data) exclude training by default unless the customer opts in. Confirm that the API organisation/project used by Romanum has not enabled data sharing. The local Responses adapter uses `store:false` and `background:false`; those flags do not establish Zero Data Retention or remove abuse-monitoring logs.
+- **Anthropic:** its [commercial terms](https://www.anthropic.com/legal/commercial-terms) prohibit training on customer content from the covered services. Confirm the applicable API account agreement. Romanum uses Messages, with global inference for its supported frontier models; no Australian-only processing or zero-retention arrangement has been verified.
+- **DeepSeek:** its [Open Platform terms](https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html) apply to API integrations and incorporate its general terms. The published API terms do not establish a blanket no-training commitment. Obtain confirmation that an opt-out or agreement covers Romanum's API inputs and outputs before clearing this release item. A consumer-chat setting alone is not proof of API coverage.
+
+These account arrangements were not verified by the source review on 7 October 2026. Keep the production OAuth connection flag disabled while app approval, policy publication and provider arrangements remain unresolved. Credential presence, synthetic tests and a successful build do not establish those arrangements.
+
 ## Validation
 
 Account-closure tests exercise the full migrated schema, ownership, deletion rollback, active-work restrictions, licensed-copy dependencies, retained settlements and stale-write rejection. HTTP tests cover CSRF, request limits, account switches, session revocation and repeat Roblox sign-in. Use only isolated test accounts for end-to-end deletion checks. Never delete a production account as a deployment smoke test.

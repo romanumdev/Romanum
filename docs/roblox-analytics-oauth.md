@@ -77,6 +77,18 @@ production migration and the registered callback. Setting an environment flag
 does not grant Roblox permission. Reauthorisation is required for each user's
 new scope; existing sign-in sessions do not gain access automatically.
 
+`scripts/analytics-schema-release.mjs <exact-main-commit>` is an optional,
+read-only production build check for migration 027. It reuses the existing
+Netlify site and database-target checks, validates the role and migration
+checksums, and checks analytics table access, OAuth columns/cascade and provider
+accounting availability. It reads schema metadata only and runs no migrations.
+It is not part of the normal build. When using it for a specific release, bind
+the temporary build command to that exact commit and restore `npm run build`
+afterward. Its output contains booleans and the commit, never credentials or
+private game records. A passing schema check still does not prove app approval
+or a successful private analytics query. See [provider checks](privacy-operations.md#ai-provider-checks-for-the-analytics-release)
+for the separate data-use requirements.
+
 After those prerequisites are approved and verified, enabling the flag exposes
 the optional **Connect through Roblox** action in game settings. Users enter a
 universe ID, authorize it on Roblox and return under the same Romanum account.
