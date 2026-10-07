@@ -8,7 +8,7 @@ import type { LinkedGame, MetricPoint } from "@/lib/linked-games/store";
 
 // The owner's private analytics for a game they linked. Only rendered for that account; never shown to anyone else.
 
-const SOURCE = "Roblox Analytics Query API · your key";
+const SOURCE = "Roblox Analytics Query API · your connected game";
 const unitOf = (metric: string): MetricUnit => SYNCED_METRICS.find((item) => item.metric === metric)?.unit ?? "count";
 /** Short labels fit at the ends of chart lines; the chart title and legend give the context. */
 const labelOf = (metric: string) => SYNCED_METRICS.find((item) => item.metric === metric)?.short ?? metric;

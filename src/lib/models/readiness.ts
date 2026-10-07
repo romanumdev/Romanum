@@ -44,6 +44,14 @@ export function readModelReadiness(
   });
 }
 
+/** Composer availability follows the same reviewed adapters as server routing. */
+export function hasReadyModel(
+  environment: ServerEnvironment = env,
+  reviews: Readonly<ExecutionReviews> = RELEASED_EXECUTION_REVIEWS,
+): boolean {
+  return readModelReadiness(environment, reviews).some(model => model.selectable);
+}
+
 /** Public allowlist: never spread environment, review objects, exceptions, or a provider client. */
 export function publicModels(environment: ServerEnvironment = env, reviews: Readonly<ExecutionReviews> = RELEASED_EXECUTION_REVIEWS): ModelsResponse {
   serverOnly();

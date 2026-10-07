@@ -7,13 +7,14 @@ import { readProject, listProjects, type ProjectBrief, type ProjectSummary } fro
 import { notFound } from "next/navigation";
 import { ProjectSignIn } from "@/components/projects/project-sign-in";
 import { historyDatabase } from "@/lib/history/database";
+import { hasReadyModel } from "@/lib/models/readiness";
 
 export const metadata: Metadata = {
   title: "Chats",
 };
 
 export default async function ChatsPage({ searchParams }: { searchParams: Promise<{ project?: string; archived?: string; context?: string; prompt?: string }> }) {
-  // Per request: the key check and this browser's chats can't be baked in at build time.
+  // Per request: model readiness and this browser's chats can't be baked in at build time.
   await connection();
   const owner = await readOwner();
   const { project: projectId, archived: archivedParam, context, prompt } = await searchParams;
@@ -36,5 +37,5 @@ export default async function ChatsPage({ searchParams }: { searchParams: Promis
   } catch {
     // A new chat still works without the list.
   }
-  return <ChatView key={project?.id ?? (archived ? "archived" : "new")} chatId={null} initialMessages={[]} recent={recent} connected={Boolean(process.env.DEEPSEEK_API_KEY)} project={project} canPlan={!!account} projects={projects} archived={archived} contextTab={context} initialPrompt={typeof prompt === "string" ? prompt.slice(0, 4000) : undefined} />;
+  return <ChatView key={project?.id ?? (archived ? "archived" : "new")} chatId={null} initialMessages={[]} recent={recent} connected={hasReadyModel()} project={project} canPlan={!!account} projects={projects} archived={archived} contextTab={context} initialPrompt={typeof prompt === "string" ? prompt.slice(0, 4000) : undefined} />;
 }

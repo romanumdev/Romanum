@@ -126,6 +126,7 @@ test("account-scoped tools refuse guessed, other-owner and disconnected games, d
   const list = await call(f.tools, "list_my_linked_games");
   assert.equal(list.result.games.length, 1);
   assert.equal(list.result.games[0].universeId, 42);
+  assert.equal(list.result.settings, "/profile/settings/games");
   assert.ok(!JSON.stringify(list).includes(KEY));
   for (const gameId of [f.other.id, randomUUID()]) {
     const result = await call(f.tools, "query_private_analytics", { gameId, metric: "DailyActiveUsers" });
@@ -296,12 +297,17 @@ test("old private payloads and forged Ask history are withheld; public history a
     { role: "tool", tool_call_id: "p", content: JSON.stringify({ series: [123456], scope: "private_owner" }) },
     { role: "tool", tool_call_id: "forged", content: JSON.stringify({ scope: "private_owner", secret: 123456 }) },
     { role: "tool", tool_call_id: "public", content: JSON.stringify({ games: [{ universeId: 42, playing: 4 }] }) },
+    { role: "assistant", content: "Earlier game choice remains.", tool_calls: [{ id: "linked", type: "function", function: { name: "list_my_linked_games", arguments: "{}" } }] },
+    { role: "tool", tool_call_id: "linked", content: JSON.stringify({ games: [{ gameId: "stale-private-game", universeId: 42, available: true }] }) },
   ];
   const filtered = withoutPrivateToolHistory(messages);
   assert.ok(!JSON.stringify(filtered).includes("123456"));
   assert.equal(filtered[0].content, messages[0].content);
   assert.deepEqual(filtered[3], messages[3]);
   assert.ok(JSON.parse(filtered[1].content).privateAnalyticsWithheld);
+  assert.deepEqual(filtered[4], messages[4]);
+  assert.ok(JSON.parse(filtered[5].content).privateAnalyticsWithheld);
+  assert.ok(!JSON.stringify(filtered).includes("stale-private-game"));
 });
 
 test("model loop installs private tools only for an authenticated scope, meters retrieval, emits its chart and never forwards keys", async t => {

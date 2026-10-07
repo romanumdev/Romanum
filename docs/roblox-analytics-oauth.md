@@ -1,9 +1,9 @@
 # Optional Roblox analytics authorization
 
-This local implementation is prepared for review. New OAuth connections are disabled unless
+New OAuth connections are disabled unless
 `ROBLOX_ANALYTICS_OAUTH_ENABLED=true` and the existing Roblox OAuth client is
-configured. No app registration, permission change, user grant, production
-migration or deployment was performed as part of preparing it.
+configured. Deploying the integration and applying its database migration do not
+activate Roblox permissions or authorize any user's game.
 
 ## Permissions and setup
 
@@ -61,6 +61,36 @@ checks. Local verification uses synthetic identities, resources and tokens;
 production OAuth success and access to actual analytics have not been tested.
 OAuth support for the existing API operations does not guarantee every metric
 is available for every experience.
+
+## Reviewing a connected game
+
+After app approval and activation, open `/profile/settings/games`, use **Connect
+through Roblox** for the experience's universe ID, and authorize that universe
+under the same Roblox account used to sign in to Romanum. Enable **Collect
+analytics** and **AI analysis** for the game; these are separate owner choices.
+An existing legacy connection can still be reviewed while new OAuth connections
+remain disabled.
+
+Open a saved Chat and ask for a review of that game's funnels, retention,
+engagement, monetization, acquisition and client/server performance. Saved Chats
+allow the review to continue in the background, preserve progress on reopening,
+and offer Stop. Ask Romanum also supports private queries, but its live request
+has a shorter lookup budget.
+
+The assistant should first list the account's linked games, then read its cached
+baseline and fetch relevant fresh metrics and dimension values. Expect findings
+to include date windows, cohort labels, missing or insignificant points and
+which categories were actually queried. Funnel, economy and custom-event data
+require the experience to have logged those events. Ads Manager creative results
+can be imported separately; detailed crash snapshots and MicroProfiler captures
+are not provided by the Analytics Query API.
+
+For a live release check, verify a successful authorized lookup with its actual
+game and date range, then verify that turning AI analysis off blocks another
+private lookup. Check disconnect and rejected/expired authorization without
+falling back to a retained legacy key. Synthetic OAuth and metric fixtures cover
+these paths locally, but do not prove Roblox has approved the app or that a real
+experience has data for every metric.
 
 ## Official references checked
 

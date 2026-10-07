@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Assistant } from "@/components/assistant/assistant";
+import { hasReadyModel } from "@/lib/models/readiness";
 import { MarketOverview } from "@/components/market/overview";
 import { SKILL_CATALOG } from "@/lib/skill-catalog";
 import { PlayerHistory } from "@/components/history/player-history";
@@ -23,9 +24,9 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 }
 
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ starter?: string; view?: string; genre?: string; tool?: string; universeIds?: string; days?: string }> }) {
-  // Check for the key per request rather than baking the answer in at build time.
+  // Check model readiness per request rather than baking the answer in at build time.
   await connection();
-  const connected = Boolean(process.env.DEEPSEEK_API_KEY);
+  const connected = hasReadyModel();
   const { starter, view: requestedView, genre, tool, universeIds, days } = await searchParams;
   const view: AnalyticsView = ANALYTICS_VIEWS.includes(requestedView as AnalyticsView) ? requestedView as AnalyticsView : "overview";
   const comparisonIds = (universeIds ?? "").split(",").map(Number).filter(id => Number.isSafeInteger(id) && id > 0).slice(0, 5);

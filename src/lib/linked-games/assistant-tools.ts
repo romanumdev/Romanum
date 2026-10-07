@@ -14,7 +14,7 @@ const DAY = 86_400_000;
 const MAX_QUERIES = 24;
 const MAX_SERIES = 24;
 const MAX_POINTS = 1800;
-const ACCESS_ERROR = "Private analytics unavailable. In Profile > Games, enable AI analysis and Collect analytics for your linked game. Reconnect if its key was rejected or expired.";
+const ACCESS_ERROR = "Private analytics unavailable. In Game settings (/profile/settings/games), enable AI analysis and Collect analytics for your linked game. Reconnect through Roblox if its analytics access was rejected or expired.";
 const filter = z.object({
   dimension: z.string().min(1).max(100),
   values: z.array(z.string().min(1).max(256)).min(1).max(20),
@@ -37,7 +37,7 @@ const schemas = {
   create_private_analytics_chart: z.object({ queryId: z.uuid(), type: z.enum(["line", "bar"]), title: z.string().trim().min(1).max(80) }).strict(),
 };
 const descriptions: Record<keyof typeof schemas, string> = {
-  list_my_linked_games: "List only the signed-in account's linked games and private-analysis availability. Use first for 'my game'; never ask for a key in chat or use a public game ID as authorisation. If more than one game could fit, ask which one. Disabled games need AI analysis enabled in Profile > Games.",
+  list_my_linked_games: "List only the signed-in account's linked games and private-analysis availability. Use first for 'my game'; never ask for a key in chat or use a public game ID as authorisation. If more than one game could fit, ask which one. Disabled games need AI analysis enabled in Game settings (/profile/settings/games).",
   get_private_analytics_catalog: "Discover all Roblox owner Analytics Query API categories and metrics, or one category/metric's supported dimensions, granularities and history window. Catalog metadata describes capability, not game measurements. Use before unfamiliar queries. Includes funnels, client/server performance, monetization, engagement, retention, acquisition, economy, custom events, thumbnails and platform service metrics.",
   get_private_game_overview: "Read this authorised game's eight cached daily metrics (players, sessions, playtime, retention and measured revenue), with sync time and original point statuses. A useful baseline for a comprehensive review. It is cached, not a fresh Roblox query; drill down with query_private_analytics.",
   get_private_analytics_dimensions: "Discover actual raw dimension values and display labels for a linked game, e.g. FunnelName, FunnelStep, Platform, PlaceVersion, CustomEventName, CurrencyType or ProductKey. Do not guess these values. Filter FunnelName before discovering its steps. Up to three dimensions; the same bounded UTC date range and filters apply as metric queries.",
@@ -154,7 +154,7 @@ export function privateAnalyticsTools(database: Database, accountId: string, sig
         if (name === "list_my_linked_games") {
           const linked = await listLinkedGames(database, accountId);
           const games = linked.map(game => ({ gameId: game.id, universeId: game.universeId, aiAnalysis: game.aiAnalysis, collect: game.collect, connectionStatus: game.status, syncedAt: game.syncedAt, available: game.aiAnalysis && game.collect && game.status === "active" && (!game.keyExpiresAt || Date.parse(game.keyExpiresAt) > Date.now()) }));
-          return { ok: true, result: { scope: "private_owner", games, settings: "/profile#games" }, summary: `${games.length} linked games` };
+          return { ok: true, result: { scope: "private_owner", games, settings: "/profile/settings/games" }, summary: `${games.length} linked games` };
         }
         if (name === "get_private_analytics_catalog") {
           const { category, metric } = parsed.data as z.infer<typeof schemas.get_private_analytics_catalog>;

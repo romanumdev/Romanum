@@ -1,6 +1,6 @@
 import type { ApiMessage } from "../assistant/types";
 
-const PRIVATE_READS = new Set(["get_private_game_overview", "get_private_analytics_dimensions", "query_private_analytics", "list_ad_reports", "read_ad_report", "compare_ad_reports", "read_ad_learning_history", "prepare_ad_thumbnail_brief"]);
+const PRIVATE_READS = new Set(["list_my_linked_games", "get_private_game_overview", "get_private_analytics_dimensions", "query_private_analytics", "list_ad_reports", "read_ad_report", "compare_ad_reports", "read_ad_learning_history", "prepare_ad_thumbnail_brief"]);
 
 /** Old results (including Ask's client-supplied history) never grant access or masquerade as a fresh owner lookup. */
 export function withoutPrivateToolHistory(messages: ApiMessage[]): ApiMessage[] {
